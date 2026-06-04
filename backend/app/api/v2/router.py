@@ -40,7 +40,7 @@ info_router = APIRouter(prefix="/info", tags=["API v2"])
 )
 async def api_v2_info() -> SuccessResponse[dict]:
     return ok(
-        message="Solar AI API v2 — beta",
+        message="HelioVision API v2 — beta",
         data={
             "version": "2.0.0-beta",
             "status": "beta",

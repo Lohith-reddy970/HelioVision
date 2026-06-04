@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # ── Application ────────────────────────────────────────────────────────────
-    APP_NAME: str = "Solar AI Optimization Platform"
+    APP_NAME: str = "HelioVision Optimization Platform"
     APP_VERSION: str = "1.0.0"
     APP_DESCRIPTION: str = (
         "Production-ready API for AI-powered solar energy forecasting, "
@@ -74,7 +74,15 @@ class Settings(BaseSettings):
     MODELS_BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent / "trained-models"
     SOLAR_FORECAST_MODEL_PATH: Path = MODELS_BASE_DIR / "solar_forecast_model.pkl"
     SAVINGS_MODEL_PATH: Path = MODELS_BASE_DIR / "savings_prediction_model.pkl"
-    YOLO_MODEL_PATH: Path = MODELS_BASE_DIR / "prediction_yolo.pt"
+    YOLO_MODEL_PATH: Path = MODELS_BASE_DIR / "prediction_yolo1.pt"
+
+    # Solar engineering assumptions
+    ROOF_METERS_PER_PIXEL: float = 0.1
+    SOLAR_PANEL_AREA_M2: float = 2.4
+    SOLAR_PANEL_WATTAGE_W: float = 550.0
+    SOLAR_KWH_PER_KWP_PER_YEAR: float = 1150.0
+    SOLAR_MAX_ROOF_COVERAGE_FACTOR: float = 0.85
+    SOLAR_MAX_MODULE_POWER_DENSITY_KW_PER_M2: float = 0.23
 
     # ── Logging ────────────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"

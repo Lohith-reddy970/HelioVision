@@ -1,7 +1,7 @@
 """
 tests/conftest.py
 ──────────────────
-Pytest fixtures for testing the Solar AI FastAPI application.
+Pytest fixtures for testing the HelioVision FastAPI application.
 """
 
 import asyncio

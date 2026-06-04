@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Solar AI Platform – Docker Compose (Full Stack)
+# HelioVision – Docker Compose (Full Stack)
 # ─────────────────────────────────────────────────────────────────────────────
 # Services:
 #   api       – FastAPI backend (4 workers)

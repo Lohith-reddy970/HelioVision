@@ -12,7 +12,6 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/roof-detection", label: "Roof Detection", icon: ScanLine },
   { href: "/solar-estimation", label: "Solar Estimation", icon: Calculator },
-  { href: "/admin", label: "Admin", icon: Settings },
 ]
 
 export function TopNav() {
@@ -29,7 +28,7 @@ export function TopNav() {
               <Zap className="w-4 h-4 text-neon-blue" />
             </div>
             <span className="font-bold text-foreground text-lg tracking-tight">
-              Solar<span className="text-neon-blue">AI</span>
+              Helio<span className="text-neon-blue">Vision</span>
             </span>
           </Link>
 

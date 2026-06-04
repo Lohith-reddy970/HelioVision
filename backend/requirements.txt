@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Solar AI Platform – Python Dependencies
+# HelioVision – Python Dependencies
 # ─────────────────────────────────────────────────────────────────────────────
 # Pin to exact minor versions for reproducible production builds.
 # Run:  pip install -r requirements.txt

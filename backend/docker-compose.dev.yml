@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Solar AI Platform – Development Docker Compose Override
+# HelioVision – Development Docker Compose Override
 # ─────────────────────────────────────────────────────────────────────────────
 # Usage (merges with docker-compose.yml):
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up

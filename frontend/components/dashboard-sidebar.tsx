@@ -11,11 +11,8 @@ import {
 import { cn } from "@/lib/utils"
 
 const sideNavItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/roof-detection", label: "Roof Detection", icon: ScanLine },
   { href: "/solar-estimation", label: "Solar Estimation", icon: Calculator },
-  { href: "/admin", label: "Analytics", icon: BarChart3 },
-  { href: "/admin", label: "Admin Panel", icon: Settings },
 ]
 
 export function DashboardSidebar() {
@@ -30,54 +27,93 @@ export function DashboardSidebar() {
             <Zap className="w-5 h-5 text-neon-blue" />
           </div>
           <span className="font-bold text-foreground text-xl tracking-tight">
-            Solar<span className="text-neon-blue">AI</span>
+            Helio<span className="text-neon-blue">Vision</span>
           </span>
         </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-2 overflow-y-auto custom-scrollbar">
-        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] px-3 mb-4">
-          Core Engine
-        </p>
-        {sideNavItems.map((item) => {
-          const Icon = item.icon
-          const active = pathname === item.href
-          return (
-            <Link
-              key={`${item.href}-${item.label}`}
-              href={item.href}
-              className={cn(
-                "relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all duration-300 group",
-                active
-                  ? "text-neon-blue"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              )}
-            >
-              <AnimatePresence>
-                {active && (
-                  <motion.span
-                    layoutId="sidebar-pill"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 rounded-2xl bg-neon-blue/8 border border-neon-blue/20 glow-blue neon-border-moving"
-                    transition={{ type: "spring", bounce: 0.15, duration: 0.6 }}
-                  />
-                )}
-              </AnimatePresence>
-              <Icon className={cn("relative z-10 w-5 h-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110", active ? "text-neon-blue" : "text-muted-foreground")} />
-              <span className="relative z-10 flex-1 tracking-wide">{item.label}</span>
-              {active && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="relative z-10 w-1.5 h-1.5 rounded-full bg-neon-blue glow-blue"
+      <nav className="flex-1 space-y-6 overflow-y-auto custom-scrollbar">
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] px-3 mb-2">
+            Control Room
+          </p>
+          <Link
+            href="/dashboard"
+            className={cn(
+              "relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all duration-300 group",
+              pathname === "/dashboard"
+                ? "text-neon-blue"
+                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+            )}
+          >
+            <AnimatePresence>
+              {pathname === "/dashboard" && (
+                <motion.span
+                  layoutId="sidebar-pill"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 rounded-2xl bg-neon-blue/8 border border-neon-blue/20 glow-blue neon-border-moving"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.6 }}
                 />
               )}
-            </Link>
-          )
-        })}
+            </AnimatePresence>
+            <LayoutDashboard className={cn("relative z-10 w-5 h-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110", pathname === "/dashboard" ? "text-neon-blue" : "text-muted-foreground")} />
+            <span className="relative z-10 flex-1 tracking-wide">System Command Center</span>
+            {pathname === "/dashboard" && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="relative z-10 w-1.5 h-1.5 rounded-full bg-neon-blue glow-blue"
+              />
+            )}
+          </Link>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-[0.2em] px-3 mb-2">
+            Core Engine
+          </p>
+          {sideNavItems.map((item) => {
+            const Icon = item.icon
+            const active = pathname === item.href
+            return (
+              <Link
+                key={`${item.href}-${item.label}`}
+                href={item.href}
+                className={cn(
+                  "relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all duration-300 group",
+                  active
+                    ? "text-neon-blue"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                )}
+              >
+                <AnimatePresence>
+                  {active && (
+                    <motion.span
+                      layoutId="sidebar-pill"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 rounded-2xl bg-neon-blue/8 border border-neon-blue/20 glow-blue neon-border-moving"
+                      transition={{ type: "spring", bounce: 0.15, duration: 0.6 }}
+                    />
+                  )}
+                </AnimatePresence>
+                <Icon className={cn("relative z-10 w-5 h-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110", active ? "text-neon-blue" : "text-muted-foreground")} />
+                <span className="relative z-10 flex-1 tracking-wide">{item.label}</span>
+                {active && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="relative z-10 w-1.5 h-1.5 rounded-full bg-neon-blue glow-blue"
+                  />
+                )}
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       {/* Footer Section */}

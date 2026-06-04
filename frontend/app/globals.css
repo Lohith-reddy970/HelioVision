@@ -9,12 +9,14 @@
   --color-foreground: oklch(0.98 0.01 220);
   --color-neon-blue: oklch(0.72 0.25 205);
   --color-neon-green: oklch(0.78 0.28 150);
+  --color-neon-red: oklch(0.62 0.25 20);
   --color-border: oklch(0.15 0.03 240 / 0.5);
   --color-ring: oklch(0.72 0.25 205 / 0.3);
   
   /* Shared Glows */
   --color-glow-blue: oklch(0.72 0.25 205 / 0.4);
   --color-glow-green: oklch(0.78 0.28 150 / 0.4);
+  --color-glow-red: oklch(0.62 0.25 20 / 0.4);
 
   --radius-xl: 1.25rem;
   --radius-2xl: 1.5rem;
@@ -91,6 +93,9 @@
 }
 .glow-green {
   box-shadow: 0 0 30px -5px var(--color-glow-green), 0 0 60px -15px var(--color-glow-green);
+}
+.glow-red {
+  box-shadow: 0 0 30px -5px var(--color-glow-red), 0 0 60px -15px var(--color-glow-red);
 }
 
 /* Skeleton Loading Pulse */

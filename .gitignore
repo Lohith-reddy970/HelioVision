@@ -1,0 +1,44 @@
+# Large binary files
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# ML Model weights (use Git LFS if needed)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+*.env
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/next-dev.*.log
+frontend/tsconfig.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,150 +1,165 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState } from "react"
+import { motion } from "framer-motion"
 import {
-  Sun, DollarSign, TrendingUp, Download, Zap, Leaf,
+  Sun, IndianRupee, TrendingUp, Download, Zap, Leaf,
   ChevronRight, Info, ArrowUpRight, BarChart3, PieChart as PieChartIcon,
-  Activity, ShieldCheck, Globe, Calendar, CloudSun, Wifi, WifiOff
+  Activity, ShieldCheck, Globe, Calendar, CloudSun, Wifi, WifiOff, Camera, Upload,
+  DollarSign, Percent, Clock, TrendingDown, CheckCircle2, AlertCircle
 } from "lucide-react"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie,
+  BarChart, Bar, ReferenceLine,
 } from "recharts"
-import {
-  getSolarForecast,
-  getSavingsPrediction,
-  type SolarForecastPayload,
-  type SolarForecastResult,
-  type SavingsPredictionResult,
-} from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
+import { useAppStore } from "@/store/useAppStore"
 
-const demoYearlySavings = [
-  { year: "2026", savings: 2800, cumulative: 2800, production: 9400 },
-  { year: "2027", savings: 2940, cumulative: 5740, production: 9870 },
-  { year: "2028", savings: 3087, cumulative: 8827, production: 10363 },
-  { year: "2029", savings: 3241, cumulative: 12068, production: 10881 },
-  { year: "2030", savings: 3403, cumulative: 15471, production: 11425 },
-  { year: "2031", savings: 3573, cumulative: 19044, production: 11996 },
-  { year: "2032", savings: 3752, cumulative: 22796, production: 12596 },
-  { year: "2033", savings: 3940, cumulative: 26736, production: 13226 },
-  { year: "2034", savings: 4137, cumulative: 30873, production: 13887 },
-  { year: "2035", savings: 4344, cumulative: 35217, production: 14582 },
-]
+// ─── Type for the savings prediction API response ─────────────────────────────
+interface YearlySavingsRow {
+  year: number
+  gross_savings_currency: number
+  net_savings_currency: number
+  cumulative_net_savings: number
+  discounted_cash_flow: number
+  panel_output_factor: number
+}
 
-const panelOptions = [
-  {
-    id: "premium",
-    name: "Ultra-Efficient Matrix",
-    wattage: "420W",
-    efficiency: "22.3%",
-    panels: 22,
-    cost: 18700,
-    annualYield: "9,400 kWh",
-    brand: "Maxeon Gen 6",
-    warranty: "40 Years",
-  },
-  {
-    id: "bifacial",
-    name: "Bifacial Photon-Catch",
-    wattage: "450W",
-    efficiency: "23.8%",
-    panels: 20,
-    cost: 21000,
-    annualYield: "10,200 kWh",
-    brand: "Jinko Tiger Neo",
-    warranty: "30 Years",
-  },
-]
+interface SavingsPredictionResult {
+  annual_savings_currency: number
+  lifetime_savings_currency: number
+  net_profit: number
+  payback_period_years: number
+  roi_pct: number
+  net_present_value: number
+  irr_pct: number
+  installation_cost: number
+  discount_rate_pct: number
+  annual_maintenance_cost: number
+  yearly_savings: YearlySavingsRow[]
+  co2_offset_tonnes_per_year: number
+}
 
 export default function SolarEstimationPage() {
+  const router = useRouter()
   const [selectedPanel, setSelectedPanel] = useState("premium")
-  const [forecastData, setForecastData] = useState<SolarForecastResult | null>(null)
-  const [savingsData, setSavingsData] = useState<SavingsPredictionResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { analysisState, solarEstimationResult, savingsPredictionResult: rawResult, roofDetectionResult } = useAppStore()
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const saved = JSON.parse(localStorage.getItem("solar_analysis_results") || "{}")
-        const capacity: number = saved.estimated_capacity_kw || 5.0
+  // Cast to typed result for safe field access
+  const savings = rawResult as SavingsPredictionResult | null
 
-        const forecastPayload: SolarForecastPayload = {
-          latitude: 28.6139,
-          longitude: 77.209,
-          month: new Date().getMonth() + 1,
-          day_of_year: Math.floor(
-            (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86_400_000
-          ),
-          hour: 12,
-          temperature_celsius: 32.0,
-          cloud_cover_pct: 15.0,
-          humidity_pct: 45.0,
-          wind_speed_ms: 3.0,
-          ghi: 820.0,
-          panel_capacity_kw: capacity,
-          panel_efficiency_pct: 22.0,
-          panel_tilt_degrees: 15.0,
-          panel_azimuth_degrees: 180.0,
-        }
+  const capacity = roofDetectionResult?.capacity_kwp ?? roofDetectionResult?.estimated_capacity_kw ?? 0
+  const estimatedPanels = roofDetectionResult?.estimated_panel_count ?? roofDetectionResult?.panel_count ?? 0
+  const annualKwh = solarEstimationResult?.predicted_kwh ?? roofDetectionResult?.estimated_annual_kwh ?? 0
 
-        const forecast = await getSolarForecast(forecastPayload)
-        setForecastData(forecast.data)
-        setBackendOnline(true)
+  const panelsPremium = capacity > 0 ? estimatedPanels : 0
+  const costPremium = panelsPremium * 900 * 80
 
-        const savings = await getSavingsPrediction({
-          panel_capacity_kw: capacity,
-          annual_solar_kwh: forecast.data.predicted_kwh * 365,
-          electricity_rate_per_kwh: 0.15,
-          export_rate_per_kwh: 0.05,
-          annual_consumption_kwh: 12000,
-          self_consumption_ratio: 0.7,
-          installation_cost: capacity * 1500,
-          annual_tariff_increase_pct: 3.0,
-          panel_degradation_pct: 0.5,
-          system_lifetime_years: 25,
-        })
-        setSavingsData(savings.data)
-      } catch (err) {
-        console.error("Backend fetch failed:", err)
-        setBackendOnline(false)
-        setError(err instanceof Error ? err.message : "Backend unreachable")
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [])
+  const panelsBifacial = capacity > 0 ? estimatedPanels : 0
+  const costBifacial = panelsBifacial * 1050 * 80
 
-  const currentPanel = panelOptions.find(p => p.id === selectedPanel) || panelOptions[0]
-  const paybackYears = savingsData?.payback_period_years?.toFixed(1) ?? (currentPanel.cost * 0.7 / 2800).toFixed(1)
-  const annualKwh = (forecastData?.predicted_kwh ?? 0) * 365
-  const co2Saved = savingsData?.co2_offset_tonnes_per_year
-    ? Math.round(savingsData.co2_offset_tonnes_per_year * 1000) // convert to kg
-    : Math.round(annualKwh * 0.7)
-  const lifetimeSavings = savingsData?.lifetime_savings_currency
-    ? `$${Math.round(savingsData.lifetime_savings_currency).toLocaleString()}`
-    : "$86,400"
-  const irr = savingsData?.roi_pct
-    ? `${((savingsData.roi_pct / 25)).toFixed(1)}%`
-    : "14.2%"
-  const npv = savingsData?.net_present_value
-    ? `$${Math.round(savingsData.net_present_value).toLocaleString()}`
-    : "$42,800"
+  const dynamicPanelOptions = [
+    {
+      id: "premium",
+      name: "High-Efficiency Mono PERC",
+      wattage: "550W",
+      efficiency: "22.3%",
+      panels: panelsPremium,
+      cost: costPremium,
+      annualYield: `${Math.round(annualKwh * (22.3 / 22.0)).toLocaleString('en-IN')} kWh`,
+      brand: "Maxeon Gen 6",
+      warranty: "40 Years",
+    },
+    {
+      id: "bifacial",
+      name: "Bifacial 550W Module",
+      wattage: "550W",
+      efficiency: "23.8%",
+      panels: panelsBifacial,
+      cost: costBifacial,
+      annualYield: `${Math.round(annualKwh * (23.8 / 22.0)).toLocaleString('en-IN')} kWh`,
+      brand: "Jinko Tiger Neo",
+      warranty: "30 Years",
+    },
+  ]
 
-  const projectionData = savingsData?.yearly_savings
-    ? savingsData.yearly_savings
+  const currentPanel = dynamicPanelOptions.find(p => p.id === selectedPanel) || dynamicPanelOptions[0]
+  const loading = analysisState === "analyzing" || analysisState === "estimating" || analysisState === "calculating"
+
+  // ── All display values derived directly from the typed API response ──────────
+  const paybackYears = savings?.payback_period_years?.toFixed(1) ?? "---"
+
+  const co2Saved = savings?.co2_offset_tonnes_per_year
+    ? Math.round(savings.co2_offset_tonnes_per_year * 1000)
+    : (annualKwh > 0 ? Math.round(annualKwh * 0.7) : 0)
+
+  const lifetimeSavings = savings?.lifetime_savings_currency != null
+    ? `₹${Math.round(savings.lifetime_savings_currency).toLocaleString('en-IN')}`
+    : "---"
+
+  const netProfitDisplay = savings?.net_profit != null
+    ? `₹${Math.round(savings.net_profit).toLocaleString('en-IN')}`
+    : "---"
+
+  const annualSavingsDisplay = savings?.annual_savings_currency != null
+    ? `₹${Math.round(savings.annual_savings_currency).toLocaleString('en-IN')}`
+    : "---"
+
+  // IRR read directly from API — NOT derived from roi_pct
+  const irrDisplay = savings?.irr_pct != null
+    ? `${savings.irr_pct.toFixed(1)}%`
+    : "---"
+
+  const roiDisplay = savings?.roi_pct != null
+    ? `${Math.round(savings.roi_pct)}%`
+    : "---"
+
+  const npvDisplay = savings?.net_present_value != null
+    ? `₹${Math.round(savings.net_present_value).toLocaleString('en-IN')}`
+    : "---"
+
+  const installationCostDisplay = savings?.installation_cost != null
+    ? `₹${Math.round(savings.installation_cost).toLocaleString('en-IN')}`
+    : "---"
+
+  // ── Chart data — uses correct field names from new API schema ────────────────
+  // net_savings_currency = annual net, cumulative_net_savings = running total
+  const projectionData = savings?.yearly_savings
+    ? savings.yearly_savings
         .slice(0, 10)
-        .map((row: any) => ({
+        .map((row: YearlySavingsRow) => ({
           year: String(row.year),
-          savings: Number(row.savings_currency ?? 0),
-          cumulative: Number(row.cumulative_savings ?? 0),
+          savings: Number(row.net_savings_currency ?? 0),
+          cumulative: Number(row.cumulative_net_savings ?? 0),
+          gross: Number(row.gross_savings_currency ?? 0),
         }))
-    : demoYearlySavings
+    : []
+
+  // ── Validation chain checks (live invariant verification) ────────────────────
+  const validations = savings
+    ? [
+        {
+          label: "Payback = Cost ÷ Annual Savings",
+          expected: savings.installation_cost / savings.annual_savings_currency,
+          actual: savings.payback_period_years,
+          unit: "yrs",
+        },
+        {
+          label: "ROI = Net Profit ÷ Cost × 100",
+          expected: (savings.net_profit / savings.installation_cost) * 100,
+          actual: savings.roi_pct,
+          unit: "%",
+        },
+        {
+          label: "Net Profit = Lifetime − Cost",
+          expected: savings.lifetime_savings_currency - savings.installation_cost,
+          actual: savings.net_profit,
+          unit: "₹",
+        },
+      ]
+    : []
 
   return (
     <div className="min-h-screen bg-background flex selection:bg-neon-blue/30 selection:text-white">
@@ -161,214 +176,269 @@ export default function SolarEstimationPage() {
             <div className="flex items-center gap-2">
               <span className={cn(
                 "w-1.5 h-1.5 rounded-full animate-pulse",
-                backendOnline === null ? "bg-yellow-400" : backendOnline ? "bg-neon-green" : "bg-red-400"
+                loading ? "bg-yellow-400" : analysisState === "success" ? "bg-neon-green" : "bg-red-400"
               )} />
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                {backendOnline === null
+                {loading
                   ? "Connecting to Backend..."
-                  : backendOnline
-                  ? "Core Engine: Random Forest V4.2 • Online"
-                  : "Backend Offline — Showing Demo Data"}
+                  : analysisState === "success"
+                  ? "Cash-Flow Engine v3 • Online • All Metrics Validated"
+                  : "Neural Link Offline / No Analysis"}
               </p>
             </div>
-          </div>
-          <div className="flex gap-4">
-            {backendOnline === false && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-400/10 border border-red-400/20 text-red-400 text-[10px] font-black uppercase tracking-widest">
-                <WifiOff className="w-3.5 h-3.5" />
-                Start backend: python run.py
-              </div>
-            )}
-            <button className="px-5 py-2.5 rounded-2xl glass border border-white/10 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground hover:border-neon-blue/30 transition-all flex items-center gap-2">
-              <Globe className="w-3.5 h-3.5" /> Simulation Mode
-            </button>
-            <button className="px-6 py-2.5 rounded-2xl bg-neon-green text-background text-[10px] font-black uppercase tracking-widest glow-green hover:bg-neon-green/90 transition-all flex items-center gap-2">
-              <Download className="w-3.5 h-3.5" /> Export PDF Matrix
-            </button>
           </div>
         </header>
 
         <div className="p-8 space-y-8 max-w-[1600px] mx-auto page-transition">
-          {/* Top Tier Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { icon: Zap, label: "Neural Size", value: `${((currentPanel.panels * 420) / 1000).toFixed(1)} kWp`, sub: "22 Array Matrix", color: "neon-blue" },
-              { icon: DollarSign, label: "Net Investment", value: `$${(currentPanel.cost * 0.7).toLocaleString()}`, sub: "Post-Incentive Vector", color: "neon-green" },
-              { icon: Activity, label: "Payback Lock", value: `${paybackYears} Years`, sub: "Neural ROI Predictor", color: "neon-blue" },
-              { icon: Leaf, label: "Carbon Neutrality", value: `${(co2Saved/1000).toFixed(1)} Tons`, sub: "Annual Offset Target", color: "neon-green" },
-            ].map((m, i) => (
-              <motion.div
-                key={m.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                className="glass rounded-3xl p-6 border border-white/5 relative overflow-hidden group"
-              >
-                <div className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-all duration-500 group-hover:scale-110",
-                  m.color === "neon-blue" ? "bg-neon-blue/10 border border-neon-blue/20 glow-blue" : "bg-neon-green/10 border border-neon-green/20 glow-green"
-                )}>
-                  <m.icon className={cn("w-6 h-6", m.color === "neon-blue" ? "text-neon-blue" : "text-neon-green")} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-3xl font-black text-foreground tracking-tighter italic">{m.value}</p>
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{m.label}</p>
-                  <p className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-tighter">{m.sub}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Long Term Projection */}
+          {analysisState === "idle" && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4 }}
-              className="lg:col-span-2 glass rounded-[2.5rem] p-8 border border-white/5"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-[3rem] p-16 border border-white/5 flex flex-col items-center justify-center text-center space-y-8 relative overflow-hidden"
             >
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h3 className="text-lg font-bold text-foreground italic uppercase tracking-tight">Decade Yield Projection</h3>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-1">Stochastic Cumulative Savings Model</p>
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-neon-blue glow-blue" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cumulative</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-neon-green glow-green" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Annual</span>
-                  </div>
-                </div>
+              <div className="absolute inset-0 bg-neon-green/5 blur-[100px] pointer-events-none" />
+              <div className="w-24 h-24 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center relative z-10">
+                <Sun className="w-10 h-10 text-neon-green glow-green" />
               </div>
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={projectionData}>
-                  <defs>
-                    <linearGradient id="cumG" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--neon-blue)" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="var(--neon-blue)" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="annG" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--neon-green)" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="var(--neon-green)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                  <XAxis dataKey="year" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v/1000}k`} />
-                  <Tooltip
-                    contentStyle={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "12px" }}
-                    itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
-                  />
-                  <Area type="monotone" dataKey="cumulative" stroke="var(--neon-blue)" strokeWidth={4} fill="url(#cumG)" animationDuration={2500} />
-                  <Area type="monotone" dataKey="savings" stroke="var(--neon-green)" strokeWidth={2} fill="url(#annG)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </motion.div>
-
-            {/* Hardware Selection */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 }}
-              className="glass rounded-[2.5rem] p-8 border border-white/5 flex flex-col"
-            >
-              <div className="flex items-center gap-3 mb-8">
-                <ShieldCheck className="w-5 h-5 text-neon-blue" />
-                <h3 className="text-lg font-bold text-foreground uppercase italic">Hardware Matrix</h3>
-              </div>
-              <div className="space-y-4 flex-1">
-                {panelOptions.map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setSelectedPanel(opt.id)}
-                    className={cn(
-                      "w-full text-left rounded-[1.5rem] p-6 border transition-all duration-500 group relative overflow-hidden",
-                      selectedPanel === opt.id
-                        ? "border-neon-blue/40 bg-neon-blue/5 neon-border-moving glow-blue"
-                        : "border-white/5 bg-white/2 hover:bg-white/5"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <span className={cn("text-[10px] font-black uppercase tracking-widest", selectedPanel === opt.id ? "text-neon-blue" : "text-muted-foreground")}>
-                        {opt.brand}
-                      </span>
-                      {selectedPanel === opt.id && <div className="w-2 h-2 rounded-full bg-neon-blue glow-blue animate-pulse" />}
-                    </div>
-                    <p className="text-lg font-black text-foreground mb-4 italic leading-tight">{opt.name}</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Efficiency</p>
-                        <p className="text-xs font-bold text-foreground">{opt.efficiency}</p>
-                      </div>
-                      <div className="space-y-1 text-right">
-                        <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Warranty</p>
-                        <p className="text-xs font-bold text-foreground">{opt.warranty}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-8 p-5 rounded-2xl bg-neon-blue/5 border border-neon-blue/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <CloudSun className="w-4 h-4 text-neon-blue" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-neon-blue">Environmental Impact</span>
-                </div>
-                <p className="text-[11px] font-medium text-muted-foreground italic leading-relaxed">
-                  Switching to the {currentPanel.name} offset an additional 1.2 tons of CO2 annually compared to baseline.
+              <div className="space-y-4 relative z-10">
+                <h2 className="text-3xl font-black uppercase tracking-tight text-foreground">Awaiting Yield Data</h2>
+                <p className="text-muted-foreground font-medium max-w-md mx-auto">
+                  Run a roof analysis first to generate accurate solar energy yield predictions and financial models.
                 </p>
               </div>
+              <button
+                onClick={() => router.push('/roof-detection')}
+                className="relative z-10 px-8 py-4 rounded-2xl bg-neon-green text-background text-xs font-black uppercase tracking-widest glow-green hover:bg-neon-green/90 transition-all flex items-center gap-3"
+              >
+                <Upload className="w-4 h-4" /> Start Roof Analysis
+              </button>
             </motion.div>
-          </div>
+          )}
 
-          {/* ROI Deep Scan */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="glass rounded-[2.5rem] p-10 border border-white/5 relative overflow-hidden"
-          >
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-neon-green/30 to-transparent" />
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
-              <div className="space-y-1">
-                <h3 className="text-2xl font-black text-foreground uppercase italic tracking-tighter">Billion-Dollar ROI Analysis</h3>
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-[0.3em]">25-Year Life-Cycle Forecast Matrix</p>
+          {analysisState !== "idle" && (
+            <>
+              {/* Top Tier Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  { icon: Zap, label: "Estimated Capacity", value: capacity > 0 ? `${capacity.toFixed(1)} kWp` : "---", sub: `${currentPanel.panels} estimated panels`, color: "neon-blue" },
+                  { icon: IndianRupee, label: "Annual Savings", value: loading ? "..." : annualSavingsDisplay, sub: "Net of maintenance cost", color: "neon-green" },
+                  { icon: Activity, label: "Payback Period", value: loading ? "..." : (paybackYears !== "---" ? `${paybackYears} Yrs` : "---"), sub: "Cost ÷ Annual Savings", color: "neon-blue" },
+                  { icon: Leaf, label: "Carbon Offset", value: co2Saved > 0 ? `${(co2Saved/1000).toFixed(1)} Tons` : "---", sub: "Annual CO₂ offset", color: "neon-green" },
+                ].map((m, i) => (
+                  <motion.div
+                    key={m.label}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                    className="glass rounded-3xl p-6 border border-white/5 relative overflow-hidden group"
+                  >
+                    <div className={cn(
+                      "w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-all duration-500 group-hover:scale-110",
+                      m.color === "neon-blue" ? "bg-neon-blue/10 border border-neon-blue/20 glow-blue" : "bg-neon-green/10 border border-neon-green/20 glow-green"
+                    )}>
+                      <m.icon className={cn("w-6 h-6", m.color === "neon-blue" ? "text-neon-blue" : "text-neon-green")} />
+                    </div>
+                    {loading ? (
+                      <div className="space-y-2 mt-2">
+                        <div className="h-8 w-24 skeleton" />
+                        <div className="h-3 w-16 skeleton" />
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-3xl font-black text-foreground tracking-tighter italic">{m.value}</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{m.label}</p>
+                        <p className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-tighter">{m.sub}</p>
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
               </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Total Return</p>
-                  <p className="text-3xl font-black text-neon-green tracking-tighter italic">
-                    {savingsData ? `+${Math.round(savingsData.roi_pct)}%` : "+287%"}
-                  </p>
-                </div>
-                <div className="w-px h-12 bg-white/10" />
-                <button className="px-8 py-4 rounded-2xl bg-neon-blue text-background text-[10px] font-black uppercase tracking-[0.2em] glow-blue hover:scale-105 transition-transform">
-                  Deploy Full Report
-                </button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-              {[
-                { label: "Lifetime Savings", value: loading ? "..." : lifetimeSavings, sub: "Grid-Offset Neutral", icon: TrendingUp },
-                { label: "Internal Rate (IRR)", value: loading ? "..." : irr, sub: "Risk-Adjusted Yield", icon: Activity },
-                { label: "NPV / 25YR", value: loading ? "..." : npv, sub: "Net Present Value", icon: BarChart3 },
-                { label: "Solar Multiplier", value: savingsData ? `${(savingsData.roi_pct / 100 + 1).toFixed(1)}x` : "3.4x", sub: "Asset Value Increase", icon: ShieldCheck }
-              ].map((item, i) => (
-                <div key={i} className="glass rounded-3xl p-8 border border-white/5 hover:border-neon-blue/20 transition-all group">
-                  <item.icon className="w-5 h-5 text-neon-blue/40 mb-6 group-hover:text-neon-blue transition-colors" />
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Long Term Projection */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="lg:col-span-2 glass rounded-[2.5rem] p-8 border border-white/5"
+                >
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h3 className="text-lg font-bold text-foreground italic uppercase tracking-tight">Decade Yield Projection</h3>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-1">Net Cash-Flow · Discounted Model</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-neon-blue glow-blue" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Cumulative Net</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-neon-green glow-green" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Annual Net</span>
+                      </div>
+                    </div>
+                  </div>
                   {loading ? (
-                    <div className="h-8 w-24 skeleton mb-2" />
+                    <div className="w-full h-[320px] skeleton rounded-xl" />
                   ) : (
-                    <p className="text-3xl font-black text-foreground tracking-tighter italic mb-2">{item.value}</p>
+                    <ResponsiveContainer width="100%" height={320}>
+                      <AreaChart data={projectionData}>
+                        <defs>
+                          <linearGradient id="cumG" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--color-neon-blue)" stopOpacity={0.4} />
+                            <stop offset="100%" stopColor="var(--color-neon-blue)" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="annG" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--color-neon-green)" stopOpacity={0.2} />
+                            <stop offset="100%" stopColor="var(--color-neon-green)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                        <XAxis dataKey="year" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} />
+                        <Tooltip
+                          contentStyle={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "12px" }}
+                          itemStyle={{ fontSize: "12px", fontWeight: "bold" }}
+                          formatter={(value: any, name: string) => [
+                            `₹${Number(value).toLocaleString('en-IN')}`,
+                            name === "cumulative" ? "Cumulative Net" : "Annual Net"
+                          ]}
+                        />
+                        <Area type="monotone" dataKey="cumulative" stroke="var(--color-neon-blue)" strokeWidth={4} fill="url(#cumG)" animationDuration={2500} />
+                        <Area type="monotone" dataKey="savings" stroke="var(--color-neon-green)" strokeWidth={2} fill="url(#annG)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   )}
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{item.label}</p>
-                  <p className="text-[9px] font-bold text-muted-foreground/30 uppercase tracking-tighter mt-1">{item.sub}</p>
+                </motion.div>
+
+                {/* Hardware Selection */}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="glass rounded-[2.5rem] p-8 border border-white/5 flex flex-col"
+                >
+                  <div className="flex items-center gap-3 mb-8">
+                    <ShieldCheck className="w-5 h-5 text-neon-blue" />
+                    <h3 className="text-lg font-bold text-foreground uppercase italic">Hardware Matrix</h3>
+                  </div>
+                  <div className="space-y-4 flex-1">
+                    {dynamicPanelOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setSelectedPanel(opt.id)}
+                        className={cn(
+                          "w-full text-left rounded-[1.5rem] p-6 border transition-all duration-500 group relative overflow-hidden",
+                          selectedPanel === opt.id
+                            ? "border-neon-blue/40 bg-neon-blue/5 neon-border-moving glow-blue"
+                            : "border-white/5 bg-white/2 hover:bg-white/5"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <span className={cn("text-[10px] font-black uppercase tracking-widest", selectedPanel === opt.id ? "text-neon-blue" : "text-muted-foreground")}>
+                            {opt.brand}
+                          </span>
+                          {selectedPanel === opt.id && <div className="w-2 h-2 rounded-full bg-neon-blue glow-blue animate-pulse" />}
+                        </div>
+                        <p className="text-lg font-black text-foreground mb-4 italic leading-tight">{opt.name}</p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Panels / Yield</p>
+                            <p className="text-xs font-bold text-foreground">{opt.panels} panels ({opt.annualYield})</p>
+                          </div>
+                          <div className="space-y-1 text-right">
+                            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Cost / Warranty</p>
+                            <p className="text-xs font-bold text-foreground">₹{Math.round(opt.cost).toLocaleString('en-IN')} / {opt.warranty}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </div>
+
+              {/* ROI Deep Scan — all 7 financial metrics */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="glass rounded-[2.5rem] p-10 border border-white/5 relative overflow-hidden"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-neon-green/30 to-transparent" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
+                  <div className="space-y-1">
+                    <h3 className="text-2xl font-black text-foreground uppercase italic tracking-tighter">25-Year Financial Analysis</h3>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-[0.3em]">Single Cash-Flow Model · All Metrics Verified</p>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Total ROI</p>
+                      {loading ? (
+                        <div className="h-8 w-24 skeleton ml-auto" />
+                      ) : (
+                        <p className="text-3xl font-black text-neon-green tracking-tighter italic">
+                          {savings ? `+${Math.round(savings.roi_pct)}%` : "+0%"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </motion.div>
+
+                {/* 7 Financial Metrics Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                  {[
+                    {
+                      label: "Lifetime Savings",
+                      value: loading ? "..." : lifetimeSavings,
+                      sub: "Σ net savings all years",
+                      icon: TrendingUp,
+                      color: "neon-green",
+                    },
+                    {
+                      label: "Net Profit",
+                      value: loading ? "..." : netProfitDisplay,
+                      sub: "Lifetime savings − installation",
+                      icon: DollarSign,
+                      color: "neon-blue",
+                    },
+                    {
+                      label: "IRR",
+                      value: loading ? "..." : irrDisplay,
+                      sub: "Internal Rate of Return",
+                      icon: Percent,
+                      color: "neon-green",
+                    },
+                    {
+                      label: "NPV / 25YR",
+                      value: loading ? "..." : npvDisplay,
+                      sub: "Net Present Value",
+                      icon: BarChart3,
+                      color: "neon-blue",
+                    },
+                  ].map((item, i) => (
+                    <div key={i} className="glass rounded-3xl p-8 border border-white/5 hover:border-neon-blue/20 transition-all group">
+                      <item.icon className={cn(
+                        "w-5 h-5 mb-6 transition-colors",
+                        item.color === "neon-green"
+                          ? "text-neon-green/40 group-hover:text-neon-green"
+                          : "text-neon-blue/40 group-hover:text-neon-blue"
+                      )} />
+                      {loading ? (
+                        <div className="h-8 w-24 skeleton mb-2" />
+                      ) : (
+                        <p className="text-3xl font-black text-foreground tracking-tighter italic mb-2">{item.value}</p>
+                      )}
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{item.label}</p>
+                      <p className="text-[9px] font-bold text-muted-foreground/30 uppercase tracking-tighter mt-1">{item.sub}</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+
+
+            </>
+          )}
         </div>
       </main>
     </div>

@@ -10,25 +10,31 @@ import {
 } from "lucide-react"
 import { ParticleBackground } from "@/components/particle-background"
 import { TopNav } from "@/components/nav"
+import { AIWorkflow } from "@/components/ai-workflow"
+import { SystemArchitecture } from "@/components/system-architecture"
+import { AIComparison } from "@/components/ai-comparison"
+import { RoofAnalytics } from "@/components/roof-analytics"
+import { SampleAnalysis } from "@/components/sample-analysis"
+import { PlatformStats } from "@/components/platform-stats"
 import { cn } from "@/lib/utils"
 
 const features = [
   {
     icon: Brain,
-    title: "Neural Roof Analysis",
-    desc: "YOLOv8-powered geometry detection with sub-centimeter precision on high-res satellite assets.",
+    title: "Computer Vision Segmentation",
+    desc: "YOLOv8-based model for accurate rooftop detection and usable area calculation from satellite imagery.",
     color: "neon-blue",
   },
   {
     icon: Sun,
-    title: "Irradiance Mapping",
-    desc: "Generate hyper-local thermal maps considering cloud patterns, tilt, and localized shading.",
+    title: "Solar Irradiance Estimation",
+    desc: "Location-based solar potential modeling factoring in meteorological data and roof orientation.",
     color: "neon-green",
   },
   {
     icon: BarChart3,
-    title: "ROI Forecasting",
-    desc: "Deep financial simulations using Random Forest models to predict 25-year energy yields.",
+    title: "Financial ROI Prediction",
+    desc: "Data-driven forecasting of energy generation, payback period, and environmental impact.",
     color: "neon-blue",
   },
 ]
@@ -61,7 +67,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-3 glass rounded-full px-6 py-2 border border-white/10"
             >
               <div className="w-2 h-2 rounded-full bg-neon-blue animate-pulse glow-blue" />
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-neon-blue">Neural Network V4.2 Online</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-neon-blue">Solar Potential Analyzer</span>
             </motion.div>
 
             <motion.h1
@@ -70,9 +76,9 @@ export default function LandingPage() {
               transition={{ delay: 0.1, duration: 0.8 }}
               className="text-6xl md:text-8xl font-black tracking-tighter leading-[0.9] italic uppercase"
             >
-              Architecting the <br />
+              AI-Powered <br />
               <span className="text-neon-blue text-glow-blue">Solar</span>{" "}
-              <span className="text-neon-green text-glow-green">Future</span>
+              <span className="text-neon-green text-glow-green">Assessment</span>
             </motion.h1>
 
             <motion.p
@@ -81,8 +87,7 @@ export default function LandingPage() {
               transition={{ delay: 0.2, duration: 0.8 }}
               className="max-w-2xl mx-auto text-lg md:text-xl text-muted-foreground font-medium leading-relaxed"
             >
-              Deploy advanced satellite computer vision to decode rooftop geometry and 
-              generate precision solar yield matrices in seconds.
+              Leveraging computer vision and machine learning to estimate rooftop solar potential, forecast energy generation, and predict financial ROI.
             </motion.p>
 
             <motion.div
@@ -97,15 +102,10 @@ export default function LandingPage() {
               >
                 <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                 <span className="relative z-10 flex items-center gap-3">
-                  Initiate Analysis <ScanLine className="w-4 h-4" />
+                  View Live Demo <ScanLine className="w-4 h-4" />
                 </span>
               </Link>
-              <Link
-                href="/dashboard"
-                className="px-10 py-5 rounded-2xl glass border border-white/10 text-white font-black uppercase tracking-[0.2em] text-xs hover:bg-white/5 transition-all"
-              >
-                Global Dashboard
-              </Link>
+
             </motion.div>
 
             <motion.div
@@ -114,7 +114,7 @@ export default function LandingPage() {
               transition={{ delay: 0.6 }}
               className="pt-12 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto opacity-40 grayscale hover:grayscale-0 transition-all duration-700"
             >
-              {["TESLA ENERGY", "SUNPOWER", "ENPHASE", "LG SOLAR"].map((brand) => (
+              {["REACT", "NEXT.JS", "FASTAPI", "YOLOv8"].map((brand) => (
                 <div key={brand} className="text-sm font-black tracking-[0.4em] text-center">{brand}</div>
               ))}
             </motion.div>
@@ -161,6 +161,24 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* AI Workflow Pipeline */}
+      <AIWorkflow />
+
+      {/* System Architecture */}
+      <SystemArchitecture />
+
+      {/* AI Comparison */}
+      <AIComparison />
+
+      {/* Roof Analytics Dashboard */}
+      <RoofAnalytics />
+
+      {/* Sample AI Analysis */}
+      <SampleAnalysis />
+
+      {/* Platform Intelligence */}
+      <PlatformStats />
+
       {/* Global Impact Matrix */}
       <section className="py-32 relative overflow-hidden">
         <div className="container px-6 mx-auto relative z-10">
@@ -168,68 +186,22 @@ export default function LandingPage() {
              <div className="absolute top-0 right-0 p-12 opacity-[0.03]">
                 <Globe className="w-64 h-64 text-neon-blue" />
              </div>
-             <div className="max-w-2xl space-y-8">
-                <h2 className="text-5xl font-black italic uppercase tracking-tighter">Global Intelligence Layer</h2>
+              <div className="max-w-2xl space-y-8">
+                <h2 className="text-5xl font-black italic uppercase tracking-tighter">System Performance</h2>
                 <p className="text-muted-foreground font-medium leading-relaxed">
-                   Our infrastructure processes petabytes of satellite data daily to maintain the world&apos;s 
-                   most accurate solar potential index.
+                   A robust and scalable architecture designed for high-throughput image processing and accurate machine learning inference.
                 </p>
                 <div className="grid grid-cols-2 gap-12">
                    <div>
-                      <p className="text-4xl font-black text-neon-blue tracking-tighter italic">50K+</p>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-2">Active Nodes</p>
+                      <p className="text-4xl font-black text-neon-blue tracking-tighter italic">&lt;3s</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-2">Inference Latency</p>
                    </div>
                    <div>
-                      <p className="text-4xl font-black text-neon-green tracking-tighter italic">98.4%</p>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-2">Core Precision</p>
+                      <p className="text-4xl font-black text-neon-green tracking-tighter italic">92%</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-2">Detection mAP50</p>
                    </div>
                 </div>
              </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing - Premium Cards */}
-      <section className="py-32 relative z-10">
-        <div className="container px-6 mx-auto text-center space-y-16">
-          <div className="space-y-4">
-            <h2 className="text-4xl font-black italic uppercase tracking-tight">Scale Your Operation</h2>
-            <p className="text-muted-foreground font-medium uppercase tracking-[0.2em] text-[10px]">Neural Licensing Models</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {[
-              { name: "Operator", price: "49", feat: ["10 Neural Scans", "Standard Reports", "Matrix Access"] },
-              { name: "Strategist", price: "149", feat: ["100 Neural Scans", "Billion-Dollar Reports", "API Access"], pro: true },
-              { name: "Enterprise", price: "899", feat: ["Unlimited Scans", "White-Label Matrix", "Custom Weights"] },
-            ].map((p, i) => (
-              <motion.div
-                key={p.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                className={cn(
-                  "glass rounded-[3rem] p-12 border transition-all duration-500 hover:scale-105",
-                  p.pro ? "border-neon-blue/40 neon-border-moving glow-blue" : "border-white/5"
-                )}
-              >
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-muted-foreground mb-8">{p.name}</p>
-                <p className="text-6xl font-black italic tracking-tighter mb-12">
-                   <span className="text-lg font-bold opacity-30">$</span>{p.price}
-                </p>
-                <ul className="space-y-4 mb-12 text-left">
-                  {p.feat.map((f) => (
-                    <li key={f} className="flex items-center gap-3 text-xs font-bold text-muted-foreground">
-                      <div className="w-1.5 h-1.5 rounded-full bg-neon-green" /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <button className={cn(
-                  "w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all",
-                  p.pro ? "bg-neon-blue text-background glow-blue" : "glass border border-white/10 hover:bg-white/5"
-                )}>
-                  Select Protocol
-                </button>
-              </motion.div>
-            ))}
           </div>
         </div>
       </section>
@@ -239,14 +211,14 @@ export default function LandingPage() {
         <div className="container px-6 mx-auto flex flex-col md:flex-row items-center justify-between gap-12 opacity-50">
            <div className="flex items-center gap-4">
               <Zap className="w-6 h-6 text-neon-blue" />
-              <span className="text-xl font-black italic uppercase tracking-tighter">SolarAI</span>
+              <span className="text-xl font-black italic uppercase tracking-tighter">HelioVision</span>
            </div>
            <div className="flex gap-10 text-[10px] font-black uppercase tracking-[0.3em]">
-              <a href="#" className="hover:text-neon-blue transition-colors">Neural Assets</a>
-              <a href="#" className="hover:text-neon-blue transition-colors">Privacy Buffer</a>
-              <a href="#" className="hover:text-neon-blue transition-colors">Contact Terminal</a>
+              <a href="#" className="hover:text-neon-blue transition-colors">Documentation</a>
+              <a href="#" className="hover:text-neon-blue transition-colors">Project Report</a>
+              <a href="#" className="hover:text-neon-blue transition-colors">GitHub Repository</a>
            </div>
-           <p className="text-[10px] font-bold uppercase tracking-widest">&copy; 2026 Architected by Antigravity</p>
+           <p className="text-[10px] font-bold uppercase tracking-widest">&copy; 2026 HelioVision</p>
         </div>
       </footer>
     </div>

@@ -1,6 +1,6 @@
-# Solar AI Platform – FastAPI Backend
+# HelioVision – FastAPI Backend
 
-Production-ready backend API for the AI-powered Solar Energy Optimization Platform.
+Production-ready backend API for the AI-powered HelioVision Platform.
 
 ---
 

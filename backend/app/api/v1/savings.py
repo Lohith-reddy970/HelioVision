@@ -76,7 +76,7 @@ async def quick_savings_estimate(
     annual_generation = panel_capacity_kw * 1150
     self_consumption = min(annual_generation * 0.7, annual_consumption_kwh)
     annual_savings = self_consumption * electricity_rate_per_kwh
-    payback = installation_cost / annual_savings if annual_savings > 0 else float("inf")
+    payback = installation_cost / annual_savings if annual_savings > 0 else -1.0
 
     return ok(
         message="Quick estimate calculated",

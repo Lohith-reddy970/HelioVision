@@ -104,15 +104,25 @@ export async function analyzeRoof(file: File) {
   // Backend returns RoofDetectionResponse; the UI pages currently expect a smaller shape.
   const raw = await handleResponse<
     SuccessEnvelope<{
+      roof_area_m2: number;
+      usable_area_m2: number;
+      panel_placement_area_m2: number;
+      capacity_kwp: number;
+      detection_confidence: number;
+      warnings: string[];
       total_roof_area_m2: number;
       total_usable_area_m2: number;
       estimated_system_capacity_kw: number;
       estimated_annual_generation_kwh: number;
       estimated_panel_count: number;
+      maximum_feasible_capacity_kwp: number;
       dominant_orientation: string;
       overall_shading: "none" | "low" | "moderate" | "high";
       suitability: string;
       recommendations: string[];
+      segments: any[];
+      image_width_px: number;
+      image_height_px: number;
     }>
   >(res);
 
@@ -124,15 +134,27 @@ export async function analyzeRoof(file: File) {
   };
 
   const simplified = {
-    roof_area_sqm: raw.data.total_roof_area_m2,
-    usable_area_sqm: raw.data.total_usable_area_m2,
-    estimated_capacity_kw: raw.data.estimated_system_capacity_kw,
+    roof_area_m2: raw.data.roof_area_m2 ?? raw.data.total_roof_area_m2,
+    usable_area_m2: raw.data.usable_area_m2 ?? raw.data.total_usable_area_m2,
+    panel_placement_area_m2: raw.data.panel_placement_area_m2,
+    capacity_kwp: raw.data.capacity_kwp ?? raw.data.estimated_system_capacity_kw,
+    roof_area_sqm: raw.data.roof_area_m2 ?? raw.data.total_roof_area_m2,
+    usable_area_sqm: raw.data.usable_area_m2 ?? raw.data.total_usable_area_m2,
+    panel_placement_area_sqm: raw.data.panel_placement_area_m2,
+    estimated_capacity_kw: raw.data.capacity_kwp ?? raw.data.estimated_system_capacity_kw,
     estimated_annual_kwh: raw.data.estimated_annual_generation_kwh,
     panel_count: raw.data.estimated_panel_count,
+    estimated_panel_count: raw.data.estimated_panel_count,
+    detection_confidence: raw.data.detection_confidence,
+    warnings: raw.data.warnings ?? [],
+    maximum_feasible_capacity_kwp: raw.data.maximum_feasible_capacity_kwp,
     orientation: raw.data.dominant_orientation,
     shading_factor: shadingFactorByLevel[raw.data.overall_shading] ?? 0.85,
     suitability_rating: raw.data.suitability,
     recommendations: raw.data.recommendations,
+    segments: raw.data.segments,
+    image_width_px: raw.data.image_width_px,
+    image_height_px: raw.data.image_height_px,
   };
 
   return {

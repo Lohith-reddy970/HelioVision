@@ -1,14 +1,13 @@
 """
-app/services/roof_detection_service.py
-───────────────────────────────────────
-Business logic for YOLOv8-based roof detection from uploaded aerial/satellite images.
+Business logic for engineering-grade roof detection and solar sizing.
 
 Pipeline:
-  1. Validate and decode uploaded image
-  2. Run YOLO inference in thread pool executor
-  3. Post-process detections → area estimation, orientation, shading
-  4. Package into structured RoofDetectionResponse
+  YOLO detection -> segmentation mask or conservative polygon fallback
+  -> pixel-count roof area -> usable area -> panel count -> capacity
+  -> engineering validation.
 """
+
+from __future__ import annotations
 
 import asyncio
 import time
@@ -18,7 +17,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from app.core.exceptions import FileUploadException, PredictionException
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.ml.model_registry import ModelRegistry
 from app.schemas.roof_detection import (
@@ -28,67 +27,116 @@ from app.schemas.roof_detection import (
     RoofOrientation,
     ShadingLevel,
 )
+from app.services.roof_geometry import (
+    Point,
+    bbox_pixel_area,
+    bbox_to_conservative_polygon,
+    estimate_from_polygon,
+    mask_pixel_count,
+    polygon_bounding_box,
+)
+from app.services.solar_sizing import (
+    ENGINEERING_CAP_WARNING,
+    SolarSizingConfig,
+    calculate_solar_sizing,
+)
 
 logger = get_logger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────────
-
-# Standard residential solar panel dimensions (m)
-_PANEL_WIDTH_M = 1.0
-_PANEL_HEIGHT_M = 1.7
-_PANEL_AREA_M2 = _PANEL_WIDTH_M * _PANEL_HEIGHT_M  # 1.7 m²
-_PANEL_WATT_PEAK = 400  # W per panel
-
-# Ground sampling distance — metres per pixel (satellite image assumption)
-# Adjust based on your actual image source / zoom level
-_METERS_PER_PIXEL = 0.1
-
-# YOLO confidence threshold
 _CONF_THRESHOLD = 0.35
-
-# Typical solar generation: kWh per kWp per year (mid-latitude)
-_KWH_PER_KWP_PER_YEAR = 1150.0
-
-
-# ── Helper functions ───────────────────────────────────────────────────────────
-
-def _bbox_to_area_m2(x1: float, y1: float, x2: float, y2: float) -> float:
-    """Convert pixel bounding box to approximate area in m²."""
-    width_px = abs(x2 - x1)
-    height_px = abs(y2 - y1)
-    return (width_px * _METERS_PER_PIXEL) * (height_px * _METERS_PER_PIXEL)
+_FALLBACK_FOOTPRINT_FACTOR = 0.82
+_FALLBACK_WARNING = (
+    "Segmentation mask unavailable; used conservative polygon approximation "
+    "instead of raw bounding-box area."
+)
 
 
-def _classify_shading(confidence: float, area_m2: float) -> ShadingLevel:
-    """
-    Heuristic shading classification.
-    In a real system this would use shadow mask analysis.
-    """
+
+def _as_numpy(value: Any) -> np.ndarray:
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        value = value.numpy()
+    return np.asarray(value)
+
+
+def _points_from_value(value: Any) -> list[Point]:
+    array = _as_numpy(value)
+    if array.size == 0:
+        return []
+    array = array.reshape(-1, 2)
+    return [
+        (float(x), float(y))
+        for x, y in array
+        if np.isfinite(x) and np.isfinite(y)
+    ]
+
+
+def _box_xyxy(box: Any) -> tuple[float, float, float, float]:
+    raw = getattr(box, "xyxy", None)
+    if raw is None:
+        return 0.0, 0.0, 0.0, 0.0
+
+    values = _as_numpy(raw).reshape(-1)
+    if values.size < 4:
+        return 0.0, 0.0, 0.0, 0.0
+    return float(values[0]), float(values[1]), float(values[2]), float(values[3])
+
+
+def _box_confidence(box: Any, default: float = 0.0) -> float:
+    raw = getattr(box, "conf", None)
+    if raw is None:
+        return default
+
+    values = _as_numpy(raw).reshape(-1)
+    if values.size == 0:
+        return default
+    return max(0.0, min(1.0, float(values[0])))
+
+
+def _bbox_dict(x1: float, y1: float, x2: float, y2: float) -> dict[str, float]:
+    left = min(x1, x2)
+    right = max(x1, x2)
+    top = min(y1, y2)
+    bottom = max(y1, y2)
+    return {
+        "x1": round(left, 2),
+        "y1": round(top, 2),
+        "x2": round(right, 2),
+        "y2": round(bottom, 2),
+        "width": round(right - left, 2),
+        "height": round(bottom - top, 2),
+    }
+
+
+def _classify_shading(confidence: float) -> ShadingLevel:
     if confidence > 0.85:
         return ShadingLevel.NONE
-    elif confidence > 0.70:
+    if confidence > 0.70:
         return ShadingLevel.LOW
-    elif confidence > 0.50:
+    if confidence > 0.50:
         return ShadingLevel.MODERATE
-    else:
-        return ShadingLevel.HIGH
+    return ShadingLevel.HIGH
 
 
-def _classify_orientation(x1: float, y1: float, x2: float, y2: float) -> RoofOrientation:
-    """
-    Estimate roof orientation from bounding box aspect ratio.
-    In a real system this would use roof ridge detection or metadata.
-    """
+def _classify_orientation_from_polygon(points: list[Point]) -> RoofOrientation:
+    if len(points) < 3:
+        return RoofOrientation.UNKNOWN
+
+    x1, y1, x2, y2 = polygon_bounding_box(points)
     width = abs(x2 - x1)
     height = abs(y2 - y1)
-    ratio = width / height if height > 0 else 1.0
+    if width <= 0 or height <= 0:
+        return RoofOrientation.UNKNOWN
 
+    ratio = width / height
     if ratio > 2.0:
         return RoofOrientation.EAST
-    elif ratio < 0.5:
+    if ratio < 0.5:
         return RoofOrientation.SOUTH
-    else:
-        return RoofOrientation.SOUTH_EAST
+    return RoofOrientation.SOUTH_EAST
 
 
 def _classify_suitability(
@@ -96,7 +144,6 @@ def _classify_suitability(
     dominant_orientation: RoofOrientation,
     overall_shading: ShadingLevel,
 ) -> InstallationSuitability:
-    """Map roof characteristics to an installation suitability rating."""
     if usable_area_m2 < 5:
         return InstallationSuitability.UNSUITABLE
     if overall_shading == ShadingLevel.HIGH:
@@ -113,118 +160,299 @@ def _classify_suitability(
 def _build_recommendations(
     segments: list[DetectedRoofSegment],
     suitability: InstallationSuitability,
+    warnings: list[str],
 ) -> list[str]:
     recommendations: list[str] = []
 
     if suitability == InstallationSuitability.EXCELLENT:
-        recommendations.append(
-            "Excellent roof suitability — maximise system size for optimal ROI."
-        )
+        recommendations.append("Excellent roof suitability; maximize system size for ROI.")
     elif suitability == InstallationSuitability.GOOD:
-        recommendations.append(
-            "Good installation candidate — consider string inverter layout."
-        )
+        recommendations.append("Good installation candidate; confirm panel layout setbacks.")
     elif suitability in (InstallationSuitability.FAIR, InstallationSuitability.POOR):
-        recommendations.append(
-            "Micro-inverters or power optimisers recommended to mitigate shading losses."
-        )
+        recommendations.append("Review shading and obstruction constraints before installation.")
     else:
-        recommendations.append(
-            "Roof area may be insufficient — consider ground-mount installation."
-        )
+        recommendations.append("Roof area may be insufficient for a viable solar installation.")
 
     if any(s.shading_level in (ShadingLevel.MODERATE, ShadingLevel.HIGH) for s in segments):
-        recommendations.append(
-            "Shading detected on one or more segments — trim nearby vegetation."
-        )
+        recommendations.append("Shading risk detected on one or more roof segments.")
 
     if len(segments) > 1:
         recommendations.append(
-            f"{len(segments)} roof segments detected — "
-            "multi-string configuration or micro-inverter system advised."
+            f"{len(segments)} roof segments detected; use segmented array layout planning."
         )
+
+    if warnings:
+        recommendations.append("Engineering warnings were generated; review adjusted values.")
 
     return recommendations
 
 
-# ── YOLO inference (synchronous — run in executor) ─────────────────────────────
+def _make_segment(
+    segment_id: int,
+    confidence: float,
+    points: list[Point],
+    geometry_source: str,
+    bbox: tuple[float, float, float, float],
+    pixel_count: float | None = None,
+) -> DetectedRoofSegment | None:
+    geometry = estimate_from_polygon(
+        points=points,
+        meters_per_pixel=settings.ROOF_METERS_PER_PIXEL,
+        geometry_source=geometry_source,
+        pixel_count=pixel_count,
+    )
+    if geometry.roof_area_m2 <= 0:
+        return None
+
+    raw_bbox_area = bbox_pixel_area(*bbox) * settings.ROOF_METERS_PER_PIXEL**2
+    raw_bbox_area = max(raw_bbox_area, geometry.raw_bounding_box_area_m2)
+
+    return DetectedRoofSegment(
+        segment_id=segment_id,
+        confidence=round(confidence, 4),
+        area_m2=geometry.roof_area_m2,
+        usable_area_m2=0.0,
+        panel_placement_area_m2=0.0,
+        pixel_count=geometry.pixel_count,
+        raw_bounding_box_area_m2=round(raw_bbox_area, 2),
+        utilization_factor=0.0,
+        geometry_source=geometry.geometry_source,
+        polygon=geometry.polygon,
+        orientation=_classify_orientation_from_polygon(points),
+        tilt_degrees=30.0,
+        shading_level=_classify_shading(confidence),
+        bounding_box=_bbox_dict(*bbox),
+    )
+
+
+def _synthetic_detection(
+    image_width: int,
+    image_height: int,
+) -> tuple[list[DetectedRoofSegment], list[str]]:
+    target_area_m2 = 120.0
+    target_pixels = target_area_m2 / (settings.ROOF_METERS_PER_PIXEL**2)
+    image_pixels = max(1, image_width * image_height)
+    footprint_pixels = min(target_pixels, image_pixels * 0.18)
+    width_px = min(image_width * 0.55, max(20.0, (footprint_pixels * 1.2) ** 0.5))
+    height_px = max(20.0, footprint_pixels / width_px)
+    height_px = min(height_px, image_height * 0.55)
+
+    center_x = image_width / 2.0
+    center_y = image_height / 2.0
+    x1 = center_x - width_px / 2.0
+    x2 = center_x + width_px / 2.0
+    y1 = center_y - height_px / 2.0
+    y2 = center_y + height_px / 2.0
+    polygon = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+
+    segment = _make_segment(
+        segment_id=0,
+        confidence=0.884,
+        points=polygon,
+        geometry_source="development_stub_polygon",
+        bbox=(x1, y1, x2, y2),
+    )
+
+    warning = "YOLO model unavailable; returned conservative development stub geometry."
+    return ([segment] if segment else []), [warning]
+
+
+def _segments_from_masks(
+    result: Any,
+    image_width: int,
+    image_height: int,
+) -> list[DetectedRoofSegment]:
+    masks = getattr(result, "masks", None)
+    mask_polygons = getattr(masks, "xy", None) if masks is not None else None
+    if mask_polygons is None:
+        return []
+    try:
+        mask_count = len(mask_polygons)
+    except TypeError:
+        mask_count = 0
+    if mask_count == 0:
+        return []
+
+    boxes_obj = getattr(result, "boxes", None)
+    boxes = list(boxes_obj) if boxes_obj is not None else []
+    mask_data = getattr(masks, "data", None)
+    segments: list[DetectedRoofSegment] = []
+
+    for index, polygon_value in enumerate(mask_polygons):
+        points = _points_from_value(polygon_value)
+        if len(points) < 3:
+            continue
+
+        if index < len(boxes):
+            bbox = _box_xyxy(boxes[index])
+            confidence = _box_confidence(boxes[index])
+        else:
+            bbox = polygon_bounding_box(points)
+            confidence = 0.0
+
+        pixels: float | None = None
+        if mask_data is not None:
+            try:
+                count = mask_pixel_count(mask_data[index], image_width, image_height)
+                pixels = count if count > 0 else None
+            except Exception:
+                pixels = None
+
+        segment = _make_segment(
+            segment_id=index,
+            confidence=confidence,
+            points=points,
+            geometry_source="segmentation_mask",
+            bbox=bbox,
+            pixel_count=pixels,
+        )
+        if segment:
+            segments.append(segment)
+
+    return segments
+
+
+def _segments_from_oriented_boxes(result: Any) -> list[DetectedRoofSegment]:
+    obb = getattr(result, "obb", None)
+    if obb is None:
+        return []
+
+    try:
+        oriented_boxes = list(obb)
+    except TypeError:
+        oriented_boxes = []
+
+    segments: list[DetectedRoofSegment] = []
+    for index, oriented_box in enumerate(oriented_boxes):
+        raw_points = getattr(oriented_box, "xyxyxyxy", None)
+        if raw_points is None:
+            continue
+
+        points = _points_from_value(raw_points)
+        if len(points) < 4:
+            continue
+
+        bbox = polygon_bounding_box(points)
+        confidence = _box_confidence(oriented_box)
+        segment = _make_segment(
+            segment_id=index,
+            confidence=confidence,
+            points=points[:4],
+            geometry_source="oriented_box_polygon",
+            bbox=bbox,
+        )
+        if segment:
+            segments.append(segment)
+
+    return segments
+
+
+def _segments_from_boxes(result: Any) -> tuple[list[DetectedRoofSegment], list[str]]:
+    boxes = getattr(result, "boxes", None)
+    if boxes is None:
+        return [], []
+
+    segments: list[DetectedRoofSegment] = []
+    for index, box in enumerate(list(boxes)):
+        x1, y1, x2, y2 = _box_xyxy(box)
+        polygon = bbox_to_conservative_polygon(
+            x1,
+            y1,
+            x2,
+            y2,
+            footprint_factor=_FALLBACK_FOOTPRINT_FACTOR,
+        )
+        if len(polygon) < 3:
+            continue
+
+        segment = _make_segment(
+            segment_id=index,
+            confidence=_box_confidence(box),
+            points=polygon,
+            geometry_source="polygon_fallback",
+            bbox=(x1, y1, x2, y2),
+        )
+        if segment:
+            segments.append(segment)
+
+    return segments, ([_FALLBACK_WARNING] if segments else [])
+
 
 def _run_yolo_inference(
     yolo_model: Any,
     image_path: Path,
     image_width: int,
     image_height: int,
-) -> list[DetectedRoofSegment]:
-    """
-    Run YOLOv8 inference and convert raw results to DetectedRoofSegment list.
-    When the model is a stub, returns a synthetic detection for demonstration.
-    """
+) -> tuple[list[DetectedRoofSegment], list[str]]:
     if yolo_model is None:
-        # ── Stub response for development without model file ────────────────
-        logger.warning("YOLO model is stub — returning synthetic detection")
-        return [
-            DetectedRoofSegment(
-                segment_id=0,
-                confidence=0.88,
-                area_m2=48.0,
-                usable_area_m2=38.0,
-                orientation=RoofOrientation.SOUTH,
-                tilt_degrees=30.0,
-                shading_level=ShadingLevel.LOW,
-                bounding_box={
-                    "x1": image_width * 0.1, "y1": image_height * 0.1,
-                    "x2": image_width * 0.9, "y2": image_height * 0.9,
-                    "width": image_width * 0.8, "height": image_height * 0.8,
-                },
-            )
-        ]
+        logger.warning("YOLO model is unavailable; using development stub")
+        return _synthetic_detection(image_width, image_height)
 
-    # ── Real YOLO inference ────────────────────────────────────────────────────
     results = yolo_model(str(image_path), conf=_CONF_THRESHOLD, verbose=False)
-    segments: list[DetectedRoofSegment] = []
+    all_segments: list[DetectedRoofSegment] = []
+    warnings: list[str] = []
 
     for result in results:
-        boxes = result.boxes
-        if boxes is None:
-            continue
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = [float(c) for c in box.xyxy[0]]
-            conf = float(box.conf[0])
-            area = _bbox_to_area_m2(x1, y1, x2, y2)
-            # Usable area ≈ 80% of detected area (obstruction margin)
-            usable = area * 0.80
-            shading = _classify_shading(conf, area)
-            orientation = _classify_orientation(x1, y1, x2, y2)
+        segments = _segments_from_masks(result, image_width, image_height)
+        if not segments:
+            segments = _segments_from_oriented_boxes(result)
+        if not segments:
+            segments, fallback_warnings = _segments_from_boxes(result)
+            warnings.extend(fallback_warnings)
 
-            segments.append(
-                DetectedRoofSegment(
-                    segment_id=i,
-                    confidence=round(conf, 4),
-                    area_m2=round(area, 2),
-                    usable_area_m2=round(usable, 2),
-                    orientation=orientation,
-                    tilt_degrees=30.0,  # estimated; use DSM data for precision
-                    shading_level=shading,
-                    bounding_box={
-                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                        "width": x2 - x1, "height": y2 - y1,
-                    },
-                )
-            )
+        all_segments.extend(segments)
 
-    return segments
+    return all_segments, list(dict.fromkeys(warnings))
 
 
-# ── Service class ──────────────────────────────────────────────────────────────
+def _run_yolo_raw(
+    yolo_model: Any,
+    image_path: Path,
+) -> list[Any] | None:
+    """
+    Run YOLO inference and return the raw result objects (for visualisation).
+    Returns None when the model is unavailable so the visualiser can use its stub.
+    """
+    if yolo_model is None:
+        return None
+    try:
+        return list(yolo_model(str(image_path), conf=_CONF_THRESHOLD, verbose=False))
+    except Exception as exc:  # pragma: no cover
+        logger.warning("YOLO raw inference failed", extra={"error": str(exc)})
+        return None
+
+
+def _aggregate_detection_confidence(segments: list[DetectedRoofSegment]) -> float:
+    if not segments:
+        return 0.0
+
+    total_area = sum(segment.area_m2 for segment in segments)
+    if total_area > 0:
+        weighted = sum(segment.confidence * segment.area_m2 for segment in segments) / total_area
+    else:
+        weighted = sum(segment.confidence for segment in segments) / len(segments)
+
+    return round(weighted * 100.0, 1)
+
+
+def _allocate_segment_sizing(
+    segments: list[DetectedRoofSegment],
+    total_area_m2: float,
+    usable_area_m2: float,
+    panel_placement_area_m2: float,
+    utilization_factor: float,
+) -> None:
+    if not segments or total_area_m2 <= 0:
+        return
+
+    for segment in segments:
+        ratio = segment.area_m2 / total_area_m2
+        segment.usable_area_m2 = round(usable_area_m2 * ratio, 2)
+        segment.panel_placement_area_m2 = round(panel_placement_area_m2 * ratio, 2)
+        segment.utilization_factor = utilization_factor
+
 
 class RoofDetectionService:
-    """
-    Roof detection service.
-
-    Accepts a PIL Image object (decoded by the route handler) and an
-    original filename, runs YOLO inference, and returns a full analysis.
-    """
-
     async def analyze(
         self,
         image: Image.Image,
@@ -233,13 +461,10 @@ class RoofDetectionService:
     ) -> RoofDetectionResponse:
         yolo_model = ModelRegistry._store.get("roof_detection")
         start_time = time.perf_counter()
-
         image_width, image_height = image.size
 
         loop = asyncio.get_event_loop()
-
-        # Run blocking YOLO inference in thread pool
-        segments: list[DetectedRoofSegment] = await loop.run_in_executor(
+        segments, warnings = await loop.run_in_executor(
             None,
             _run_yolo_inference,
             yolo_model,
@@ -249,48 +474,81 @@ class RoofDetectionService:
         )
 
         if not segments:
+            warnings.append("No roof geometry detected; solar sizing was skipped.")
             logger.warning("No roof segments detected", extra={"original_filename": filename})
-            # Return a minimal response so the frontend doesn't crash
-            segments = []
 
-        # ── Aggregation ────────────────────────────────────────────────────────
-        total_area = sum(s.area_m2 for s in segments)
-        total_usable = sum(s.usable_area_m2 for s in segments)
+        total_area = round(sum(segment.area_m2 for segment in segments), 2)
+        sizing = calculate_solar_sizing(
+            total_area,
+            SolarSizingConfig(
+                panel_area_m2=settings.SOLAR_PANEL_AREA_M2,
+                panel_wattage_w=settings.SOLAR_PANEL_WATTAGE_W,
+                kwh_per_kwp_per_year=settings.SOLAR_KWH_PER_KWP_PER_YEAR,
+                max_roof_coverage_factor=settings.SOLAR_MAX_ROOF_COVERAGE_FACTOR,
+                max_module_power_density_kw_per_m2=(
+                    settings.SOLAR_MAX_MODULE_POWER_DENSITY_KW_PER_M2
+                ),
+            ),
+        )
+        warnings.extend(sizing.warnings)
+        warnings = list(dict.fromkeys(warnings))
 
-        # Dominant orientation: segment with largest usable area
-        dominant_orientation = (
-            max(segments, key=lambda s: s.usable_area_m2).orientation
-            if segments else RoofOrientation.UNKNOWN
+        if ENGINEERING_CAP_WARNING in sizing.warnings:
+            logger.warning(
+                "Engineering validation capped solar capacity",
+                extra={
+                    "original_filename": filename,
+                    "roof_area_m2": total_area,
+                    "maximum_feasible_capacity_kwp": sizing.maximum_feasible_capacity_kwp,
+                    "adjusted_capacity_kwp": sizing.capacity_kwp,
+                    "estimated_panel_count": sizing.estimated_panel_count,
+                },
+            )
+
+        _allocate_segment_sizing(
+            segments,
+            total_area_m2=total_area,
+            usable_area_m2=sizing.usable_area_m2,
+            panel_placement_area_m2=sizing.panel_placement_area_m2,
+            utilization_factor=sizing.utilization_factor,
         )
 
-        # Overall shading: worst-case segment
+        dominant_orientation = (
+            max(segments, key=lambda s: s.usable_area_m2).orientation
+            if segments
+            else RoofOrientation.UNKNOWN
+        )
         shading_order = [
-            ShadingLevel.NONE, ShadingLevel.LOW,
-            ShadingLevel.MODERATE, ShadingLevel.HIGH,
+            ShadingLevel.NONE,
+            ShadingLevel.LOW,
+            ShadingLevel.MODERATE,
+            ShadingLevel.HIGH,
         ]
         overall_shading = (
             max(segments, key=lambda s: shading_order.index(s.shading_level)).shading_level
-            if segments else ShadingLevel.NONE
+            if segments
+            else ShadingLevel.NONE
         )
-
-        suitability = _classify_suitability(total_usable, dominant_orientation, overall_shading)
-
-        # ── Solar capacity estimate ────────────────────────────────────────────
-        panels = int(total_usable / _PANEL_AREA_M2)
-        capacity_kw = round((panels * _PANEL_WATT_PEAK) / 1000, 2)
-        annual_kwh = round(capacity_kw * _KWH_PER_KWP_PER_YEAR, 0)
-
+        suitability = _classify_suitability(
+            sizing.usable_area_m2,
+            dominant_orientation,
+            overall_shading,
+        )
+        detection_confidence = _aggregate_detection_confidence(segments)
         processing_ms = round((time.perf_counter() - start_time) * 1000, 2)
-
-        recommendations = _build_recommendations(segments, suitability)
+        recommendations = _build_recommendations(segments, suitability, warnings)
 
         logger.info(
             "Roof detection completed",
             extra={
                 "original_filename": filename,
                 "segments": len(segments),
-                "usable_area_m2": total_usable,
-                "capacity_kw": capacity_kw,
+                "roof_area_m2": sizing.roof_area_m2,
+                "usable_area_m2": sizing.usable_area_m2,
+                "panel_count": sizing.estimated_panel_count,
+                "capacity_kwp": sizing.capacity_kwp,
+                "detection_confidence": detection_confidence,
+                "warnings": warnings,
                 "processing_ms": processing_ms,
             },
         )
@@ -302,16 +560,60 @@ class RoofDetectionService:
             processing_time_ms=processing_ms,
             total_segments_detected=len(segments),
             segments=segments,
-            total_roof_area_m2=round(total_area, 2),
-            total_usable_area_m2=round(total_usable, 2),
+            roof_area_m2=sizing.roof_area_m2,
+            usable_area_m2=sizing.usable_area_m2,
+            panel_placement_area_m2=sizing.panel_placement_area_m2,
+            estimated_panel_count=sizing.estimated_panel_count,
+            capacity_kwp=sizing.capacity_kwp,
+            detection_confidence=detection_confidence,
+            warnings=warnings,
+            total_roof_area_m2=sizing.roof_area_m2,
+            total_usable_area_m2=sizing.usable_area_m2,
+            estimated_system_capacity_kw=sizing.capacity_kwp,
+            estimated_annual_generation_kwh=sizing.estimated_annual_generation_kwh,
+            maximum_feasible_capacity_kwp=sizing.maximum_feasible_capacity_kwp,
             dominant_orientation=dominant_orientation,
             overall_shading=overall_shading,
             suitability=suitability,
-            estimated_panel_count=panels,
-            estimated_system_capacity_kw=capacity_kw,
-            estimated_annual_generation_kwh=annual_kwh,
             recommendations=recommendations,
         )
+
+
+    async def visualize(
+        self,
+        image: Image.Image,
+        temp_image_path: Path,
+    ) -> bytes:
+        """
+        Run YOLO inference and return an OpenCV-rendered PNG with polygon
+        overlays, semi-transparent fills, and metric annotations burned in.
+
+        Priority order:
+          1. Segmentation masks  (result.masks.xy)
+          2. Oriented boxes      (result.obb)
+          3. Bounding-box fallback
+          4. Development stub    (when YOLO model is absent)
+        """
+        from app.services.roof_visualizer import render_roof_visualization
+
+        yolo_model = ModelRegistry._store.get("roof_detection")
+        loop = asyncio.get_event_loop()
+
+        yolo_results = await loop.run_in_executor(
+            None,
+            _run_yolo_raw,
+            yolo_model,
+            temp_image_path,
+        )
+
+        png_bytes = await loop.run_in_executor(
+            None,
+            render_roof_visualization,
+            image,
+            yolo_results,
+            "PNG",
+        )
+        return png_bytes
 
 
 roof_detection_service = RoofDetectionService()

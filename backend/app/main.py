@@ -83,9 +83,9 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         contact={
-            "name": "Solar AI Platform Team",
+            "name": "HelioVision Platform Team",
             "url": "https://github.com/Lohith1234567/Solar-AI-platform",
-            "email": "support@solarai.dev",
+            "email": "support@heliovision.dev",
         },
         license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
         openapi_tags=[

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Solar AI Platform – Multi-stage Production Dockerfile
+# HelioVision – Multi-stage Production Dockerfile
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Stages:
@@ -36,8 +36,8 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
-LABEL maintainer="Solar AI Platform Team <support@solarai.dev>"
-LABEL org.opencontainers.image.title="Solar AI Platform Backend"
+LABEL maintainer="HelioVision Platform Team <support@heliovision.dev>"
+LABEL org.opencontainers.image.title="HelioVision Backend"
 LABEL org.opencontainers.image.description="Production FastAPI backend for solar energy AI"
 LABEL org.opencontainers.image.version="1.0.0"
 

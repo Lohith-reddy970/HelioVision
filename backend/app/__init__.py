@@ -1,2 +1,2 @@
-# Solar AI Platform - FastAPI Backend
+# HelioVision - FastAPI Backend
 # Package initializer

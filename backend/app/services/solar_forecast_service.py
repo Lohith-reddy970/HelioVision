@@ -53,6 +53,7 @@ def _estimate_confidence_interval(
     rf_model: Any,
     X: np.ndarray,
     base_prediction: float,
+    capacity: float,
 ) -> tuple[float, float]:
     """
     Compute an approximate 95% confidence interval by collecting predictions
@@ -64,9 +65,9 @@ def _estimate_confidence_interval(
         margin = base_prediction * 0.10
         return max(0.0, base_prediction - margin), base_prediction + margin
 
-    # Gather per-tree predictions
+    # Gather per-tree predictions (converted to kWh and scaled by capacity)
     tree_preds = np.array([
-        tree.predict(X)[0] for tree in rf_model.estimators_
+        (tree.predict(X)[0] * capacity) / 1000.0 for tree in rf_model.estimators_
     ])
     std = float(np.std(tree_preds))
     # 95% CI ~ mean ± 1.96 * σ
@@ -92,7 +93,7 @@ def _run_inference(rf_model: Any, X: np.ndarray, capacity: float, efficiency: fl
         # Stub: deterministic dummy prediction for development
         return float(np.clip(X[0, 2] * capacity * efficiency / 1000, 0, 999))
     predicted = rf_model.predict(X)[0]
-    return max(0.0, float(predicted))
+    return max(0.0, (float(predicted) * capacity) / 1000.0)
 
 
 class SolarForecastService:
@@ -123,9 +124,21 @@ class SolarForecastService:
         # Offload CPU-bound inference to thread pool
         predicted_kwh = await loop.run_in_executor(None, _run_inference, rf_model, X, request.panel_capacity_kw, request.panel_efficiency_pct / 100.0)
 
+        # Enforce Generation Yield Constraints (Physics Bounding)
+        # Annual Generation (kWh) = System Size (kWp) * Specific Yield (kWh/kWp)
+        specific_yield = predicted_kwh / request.panel_capacity_kw if request.panel_capacity_kw > 0 else 0
+        
+        # Limit specific yield to realistic bounds (e.g., 800 - 1800 kWh/kWp depending on GHI)
+        # A simple linear scale based on GHI (0 to 1200 W/m2 typical range)
+        min_yield = max(800.0, 800.0 + (request.ghi / 1200.0) * 400.0)
+        max_yield = min(1800.0, 1200.0 + (request.ghi / 1200.0) * 600.0)
+        
+        specific_yield = max(min_yield, min(max_yield, specific_yield))
+        predicted_kwh = request.panel_capacity_kw * specific_yield
+
         # Confidence interval (also potentially CPU-heavy for large forests)
         lower, upper = await loop.run_in_executor(
-            None, _estimate_confidence_interval, rf_model, X, predicted_kwh
+            None, _estimate_confidence_interval, rf_model, X, predicted_kwh, request.panel_capacity_kw
         )
 
         irr_factor = _irradiance_efficiency_factor(

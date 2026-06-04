@@ -19,7 +19,7 @@ from app.core.config import settings
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Solar AI Platform – Dev Server")
+    parser = argparse.ArgumentParser(description="HelioVision – Dev Server")
     parser.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
     parser.add_argument(

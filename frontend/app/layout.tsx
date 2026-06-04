@@ -14,7 +14,7 @@ const spaceMono = Space_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'SolarAI — AI-Powered Solar Analysis Platform',
+  title: 'HelioVision — AI-Powered Solar Analysis Platform',
   description: 'Harness the power of AI to analyze rooftops, estimate solar potential, and maximize your energy savings.',
   generator: 'v0.app',
   keywords: ['solar energy', 'AI analysis', 'roof detection', 'solar estimation', 'renewable energy'],
