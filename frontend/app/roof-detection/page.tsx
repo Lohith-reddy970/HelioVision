@@ -537,6 +537,37 @@ export default function RoofDetectionPage() {
 
                     )}
 
+                    {roofDetectionResult.calibration_factor !== undefined && (
+                      <div className="glass rounded-[2.5rem] p-8 border border-white/5 space-y-6">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground">Calibration Diagnostics</h3>
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-neon-blue">
+                            <Layers className="w-3.5 h-3.5" /> Geometric Engine
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Raw Area</p>
+                            <p className="text-sm font-black">{roofDetectionResult.raw_roof_area_m2?.toFixed(1) || "---"} <span className="text-[10px] text-muted-foreground">m²</span></p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Calib. Factor</p>
+                            <p className="text-sm font-black">{roofDetectionResult.calibration_factor?.toFixed(2) || "---"}x</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Final Area</p>
+                            <p className="text-sm font-black text-neon-blue">{detectedArea.toFixed(1)} <span className="text-[10px] text-muted-foreground">m²</span></p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Validation</p>
+                            <p className={cn("text-sm font-black", roofDetectionResult.engineering_validation_applied ? "text-yellow-400" : "text-neon-green")}>
+                              {roofDetectionResult.engineering_validation_applied ? "Constrained" : "Pass"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="glass rounded-[2.5rem] p-8 border border-white/5 space-y-8">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground">Detection Diagnostics</h3>

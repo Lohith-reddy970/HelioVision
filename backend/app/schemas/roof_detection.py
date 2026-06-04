@@ -100,6 +100,11 @@ class RoofDetectionResponse(BaseSchema):
     )
     warnings: list[str] = Field(default_factory=list)
 
+    # Calibration Diagnostics
+    raw_roof_area_m2: float = Field(..., ge=0.0, description="Raw uncalibrated roof area sum")
+    calibration_factor: float = Field(..., ge=0.0, description="Auto-calibration multiplier applied")
+    engineering_validation_applied: bool = Field(..., description="Whether bounds constraints were applied")
+
     # Backwards-compatible aliases used by the current frontend
     total_roof_area_m2: float = Field(..., ge=0.0)
     total_usable_area_m2: float = Field(..., ge=0.0)

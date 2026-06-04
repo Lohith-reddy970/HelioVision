@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# HelioVision – Render Deployment Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy with:  https://render.com/docs/render-yaml
+#
+# 1. Push this file to your GitHub repo root
+# 2. In Render dashboard → New → Blueprint → connect your repo
+# 3. Set the secret environment variables listed in the dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: heliovision-api
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: standard              # upgrade to pro for more RAM (ultralytics needs ~2GB)
+    region: singapore           # choose closest to your users
+
+    # ── Health & routing ──────────────────────────────────────────────────────
+    healthCheckPath: /api/v1/health
+
+    # ── Environment variables ─────────────────────────────────────────────────
+    envVars:
+      # Application
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: LOG_LEVEL
+        value: INFO
+      - key: WORKERS
+        value: "1"                   # CRITICAL: 1 worker — prevents YOLO loading twice (2x RAM)
+
+      # REQUEST TIMEOUT — YOLO inference can take 10-30s on cold Render CPU
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: "90"
+
+      # CORS — UPDATE THIS after Vercel deployment gives you your real URL
+      # e.g. https://heliovision-abc123.vercel.app
+      - key: ALLOWED_ORIGINS_STR
+        value: https://your-app.vercel.app
+
+      # API key — set a strong secret in Render dashboard (mark as secret)
+      - key: SECRET_KEY
+        generateValue: true      # Render auto-generates a secure random value
+
+      # ML Model paths — models must be bundled in the Docker image
+      # (copy trained-models/ into backend/models/ before building)
+      - key: SOLAR_FORECAST_MODEL_PATH
+        value: /app/models/solar_forecast_model.pkl
+      - key: SAVINGS_MODEL_PATH
+        value: /app/models/savings_prediction_model.pkl
+      - key: YOLO_MODEL_PATH
+        value: /app/models/prediction_yolo1.pt
+
+      # Database — EMPTY = stateless mode (no DB required)
+      - key: DATABASE_URL
+        value: ""
+
+      # Redis — EMPTY = in-memory rate limiting (no Redis required)
+      - key: REDIS_URL
+        value: ""
+
+    # ── Disk for temp uploads (ephemeral — files deleted after processing) ─────
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 1                  # 1 GB is sufficient for temp image processing

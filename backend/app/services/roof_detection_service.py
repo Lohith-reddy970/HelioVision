@@ -157,6 +157,89 @@ def _classify_suitability(
     return InstallationSuitability.GOOD
 
 
+def _calculate_iou(box1: dict[str, float], box2: dict[str, float]) -> float:
+    xA = max(box1["x1"], box2["x1"])
+    yA = max(box1["y1"], box2["y1"])
+    xB = min(box1["x2"], box2["x2"])
+    yB = min(box1["y2"], box2["y2"])
+
+    interArea = max(0.0, xB - xA) * max(0.0, yB - yA)
+    if interArea == 0:
+        return 0.0
+
+    box1Area = box1["width"] * box1["height"]
+    box2Area = box2["width"] * box2["height"]
+
+    return interArea / float(box1Area + box2Area - interArea)
+
+
+def _filter_overlapping_segments(segments: list[DetectedRoofSegment], iou_threshold: float = 0.5) -> list[DetectedRoofSegment]:
+    if not segments:
+        return []
+
+    sorted_segments = sorted(segments, key=lambda s: s.confidence, reverse=True)
+    kept_segments: list[DetectedRoofSegment] = []
+
+    for segment in sorted_segments:
+        keep = True
+        for kept in kept_segments:
+            iou = _calculate_iou(segment.bounding_box, kept.bounding_box)
+            if iou > iou_threshold:
+                keep = False
+                break
+        if keep:
+            kept_segments.append(segment)
+
+    return kept_segments
+
+
+def _calibrate_roof_area(
+    raw_area_m2: float, 
+    segments: list[DetectedRoofSegment], 
+    image_width: int, 
+    image_height: int
+) -> tuple[float, float, bool]:
+    if raw_area_m2 <= 0 or not segments:
+        return 0.0, 1.0, False
+        
+    calibration_factor = 1.0
+    
+    total_image_pixels = image_width * image_height
+    total_roof_pixels = sum(s.pixel_count for s in segments if s.pixel_count is not None)
+    
+    if total_roof_pixels == 0:
+        total_roof_pixels = sum(s.bounding_box["width"] * s.bounding_box["height"] for s in segments)
+        
+    coverage_pct = total_roof_pixels / total_image_pixels if total_image_pixels > 0 else 0
+    
+    if coverage_pct > 0.8:
+        calibration_factor *= 0.6
+    elif coverage_pct > 0.6:
+        calibration_factor *= 0.8
+        
+    avg_confidence = sum(s.confidence for s in segments) / len(segments)
+    if avg_confidence < 0.5:
+        calibration_factor *= 0.8
+    elif avg_confidence < 0.7:
+        calibration_factor *= 0.9
+        
+    if raw_area_m2 > 2000:
+        scaling_penalty = max(0.6, 1.0 - ((raw_area_m2 - 2000) / 10000) * 0.4)
+        calibration_factor *= scaling_penalty
+
+    calibrated_area_m2 = raw_area_m2 * calibration_factor
+    
+    engineering_validation_applied = False
+    MAX_WAREHOUSE_AREA = 10000.0
+    
+    if calibrated_area_m2 > MAX_WAREHOUSE_AREA:
+        calibrated_area_m2 = MAX_WAREHOUSE_AREA
+        calibration_factor = calibrated_area_m2 / raw_area_m2
+        engineering_validation_applied = True
+        
+    return round(calibrated_area_m2, 2), round(calibration_factor, 4), engineering_validation_applied
+
+
 def _build_recommendations(
     segments: list[DetectedRoofSegment],
     suitability: InstallationSuitability,
@@ -477,7 +560,17 @@ class RoofDetectionService:
             warnings.append("No roof geometry detected; solar sizing was skipped.")
             logger.warning("No roof segments detected", extra={"original_filename": filename})
 
-        total_area = round(sum(segment.area_m2 for segment in segments), 2)
+        segments = _filter_overlapping_segments(segments, iou_threshold=0.5)
+        raw_total_area = round(sum(segment.area_m2 for segment in segments), 2)
+        
+        calibrated_area, calibration_factor, eng_validation_applied = _calibrate_roof_area(
+            raw_total_area, segments, image_width, image_height
+        )
+        
+        if eng_validation_applied:
+            warnings.append("Area adjusted using engineering validation constraints.")
+
+        total_area = calibrated_area
         sizing = calculate_solar_sizing(
             total_area,
             SolarSizingConfig(
@@ -576,6 +669,9 @@ class RoofDetectionService:
             overall_shading=overall_shading,
             suitability=suitability,
             recommendations=recommendations,
+            raw_roof_area_m2=raw_total_area,
+            calibration_factor=calibration_factor,
+            engineering_validation_applied=eng_validation_applied,
         )
 
 

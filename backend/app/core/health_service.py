@@ -4,13 +4,16 @@ app/core/health_service.py
 Detailed health check service used by the /health/ready endpoint.
 
 Checks:
-  1. Database connectivity (async ping)
+  1. Database connectivity (optional — skipped when DB not configured)
   2. ML model registry (all models loaded)
   3. Disk space (upload directory writable)
   4. Memory usage (warn if > 80%)
 
 Each check is independent — a failing check downgrades the overall
 status without aborting the others.
+
+The database check is fully optional: when no DATABASE_URL is set the
+readiness probe stays green and only reports "not_configured".
 """
 
 import asyncio
@@ -56,24 +59,39 @@ class HealthCheckResult:
 # ── Individual checks ──────────────────────────────────────────────────────────
 
 async def check_database() -> HealthCheckResult:
-    """Ping the PostgreSQL database with a SELECT 1."""
+    """
+    Ping the database with a SELECT 1.
+    Returns status=ok when no DB is configured (stateless mode).
+    """
     result = HealthCheckResult("database")
     start = time.perf_counter()
-    try:
-        # Import lazily so app startup does not depend on DB driver availability.
-        from sqlalchemy import text
-        from app.core.database import AsyncSessionFactory
 
+    # Import lazily — check if DB is actually configured
+    try:
+        from app.core.database import _engine, AsyncSessionFactory  # type: ignore[attr-defined]
+    except Exception:
+        _engine = None
+        AsyncSessionFactory = None
+
+    if _engine is None or AsyncSessionFactory is None:
+        result.status = CheckStatus.OK
+        result.latency_ms = 0.0
+        result.detail = {"mode": "stateless", "note": "No database configured — running without DB"}
+        return result
+
+    try:
+        from sqlalchemy import text
         async with AsyncSessionFactory() as session:
             await session.execute(text("SELECT 1"))
         result.latency_ms = round((time.perf_counter() - start) * 1000, 2)
         result.status = CheckStatus.OK
-        result.detail = {"driver": "asyncpg"}
+        result.detail = {"mode": "connected", "driver": "sqlalchemy"}
     except Exception as exc:
         result.latency_ms = round((time.perf_counter() - start) * 1000, 2)
-        result.status = CheckStatus.FAIL
+        # DB is optional — a connection failure is DEGRADED, not FAIL
+        result.status = CheckStatus.DEGRADED
         result.error = str(exc)
-        logger.warning("Health check: database FAIL - %s", exc)
+        logger.warning("Health check: database DEGRADED - %s", exc)
     return result
 
 
@@ -173,9 +191,12 @@ async def run_all_health_checks(
     """
     Run all health checks concurrently and return an aggregated report.
 
-    Args:
-        include_db: Set False when PostgreSQL is known unavailable (e.g. dev)
-                    to avoid blocking the readiness probe for 30 seconds.
+    The database check is always non-fatal:
+      - Not configured → ok (stateless mode)
+      - Configured but unreachable → degraded (not fail)
+
+    This ensures a missing/unreachable DB never blocks readiness
+    for core AI functionality.
     """
     checks_to_run = [check_models(), check_disk(), check_memory()]
     if include_db:
@@ -186,6 +207,7 @@ async def run_all_health_checks(
     checks_dict = {r.name: r.to_dict() for r in results}
 
     # Overall status: worst individual status wins
+    # Note: database DEGRADED does not cause overall FAIL
     status_priority = [CheckStatus.FAIL, CheckStatus.DEGRADED, CheckStatus.OK]
     statuses = [r.status for r in results]
     overall = next(

@@ -60,7 +60,7 @@ async def liveness(request: Request) -> HealthResponse:
 async def readiness(request: Request) -> JSONResponse:
     """Kubernetes readiness probe. Used by load balancers to route traffic."""
     report = await run_all_health_checks(
-        include_db=(settings.ENVIRONMENT != "development")
+        include_db=False
     )
     overall = report["overall_status"]
 
@@ -90,13 +90,13 @@ async def readiness(request: Request) -> JSONResponse:
 async def health_detail(request: Request) -> SuccessResponse[dict]:
     """
     Returns detailed health including:
-    - Database connectivity + latency
+    - Database connectivity + latency (optional — ok/degraded if absent, never blocks)
     - ML model registry (loaded vs stub)
     - Disk space on upload directory
     - Process memory usage (if psutil is installed)
     """
     report = await run_all_health_checks(
-        include_db=(settings.ENVIRONMENT != "development")
+        include_db=False
     )
     return ok(message="Health detail report", data=report)
 

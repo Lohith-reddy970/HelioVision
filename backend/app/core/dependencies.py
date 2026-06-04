@@ -21,7 +21,7 @@ Usage in a route:
         return await service.predict(request)
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import Depends
 from app.core.security import get_api_key
@@ -53,15 +53,6 @@ def get_roof_detection_service() -> RoofDetectionService:
 
 
 # ── Type aliases (for clean route signatures) ──────────────────────────────────
-async def get_db():
-    """Lazily import DB session dependency to avoid startup-time DB import side effects."""
-    from app.core.database import get_db as _real_get_db
-
-    async for session in _real_get_db():
-        yield session
-
-
-DBSession = Annotated[Any, Depends(get_db)]
 ApiKey = Annotated[str, Depends(get_api_key)]
 ForecastSvc = Annotated[SolarForecastService, Depends(get_forecast_service)]
 SavingsSvc = Annotated[SavingsService, Depends(get_savings_service)]

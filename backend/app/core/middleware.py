@@ -48,6 +48,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
       - Content-Security-Policy (basic; tighten for your frontend)
     """
 
+    # ── CSP for API / application routes (tight production policy) ────────────
     _SECURITY_HEADERS: dict[str, str] = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
@@ -57,14 +58,46 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline';"
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:;"
         ),
     }
 
+    # ── CSP for Swagger UI / ReDoc documentation routes ───────────────────────
+    # FastAPI's built-in /docs and /redoc load assets from:
+    #   - https://cdn.jsdelivr.net   (swagger-ui CSS + JS bundle)
+    #   - https://fastapi.tiangolo.com (favicon)
+    # These paths are opt-in; production API routes stay under the tight policy.
+    _DOCS_CSP_HEADERS: dict[str, str] = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com;"
+        ),
+    }
+
+    # Paths that serve FastAPI documentation UI assets
+    _DOCS_PATHS: frozenset[str] = frozenset({"/docs", "/redoc", "/openapi.json"})
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
-        for header, value in self._SECURITY_HEADERS.items():
+
+        # Choose the appropriate CSP: relaxed for docs UI, tight for everything else
+        headers = (
+            self._DOCS_CSP_HEADERS
+            if request.url.path in self._DOCS_PATHS
+            else self._SECURITY_HEADERS
+        )
+
+        for header, value in headers.items():
             response.headers[header] = value
+
         # HSTS only over HTTPS
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = (

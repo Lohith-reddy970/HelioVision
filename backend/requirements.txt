@@ -14,29 +14,33 @@ python-multipart==0.0.9            # multipart/form-data (file uploads)
 pydantic==2.9.2
 pydantic-settings==2.5.2
 
-# ── Database (PostgreSQL) ─────────────────────────────────────────────────────
-sqlalchemy==2.0.36
-asyncpg==0.30.0                    # async PostgreSQL driver (0.30+ has Python 3.13 wheel)
-greenlet>=3.0.0                    # required by SQLAlchemy async internals
-alembic==1.13.3                    # database migrations
-
 # ── ML / Data Science ─────────────────────────────────────────────────────────
 numpy>=2.0.0                       # 2.x has Python 3.13 wheels
 scikit-learn>=1.5.2                # Random Forest model
+joblib>=1.4.0                      # model serialisation (used by sklearn)
 Pillow>=10.4.0                     # image processing (PIL)
+opencv-python-headless>=4.9.0      # roof visualization rendering
 
-# YOLO – install separately due to size; uncomment when ready:
-ultralytics
+# ── YOLO ──────────────────────────────────────────────────────────────────────
+ultralytics                        # YOLOv8 roof detection
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
-slowapi==0.1.9                     # fastapi-compatible rate limiter (wraps limits)
+slowapi==0.1.9                     # fastapi-compatible rate limiter (in-memory)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
-python-dotenv==1.0.1               # .env file loading (pydantic-settings handles this)
+python-dotenv==1.0.1               # .env file loading
 
 # ── Optional (production enhancements) ────────────────────────────────────────
-psutil>=6.0.0                    # memory health check (uncomment to enable)
-# redis>=5.0.0                     # Redis-backed distributed rate limiting
+psutil>=6.0.0                      # memory health check
+
+# ── Optional (analytics/logging — only needed if DATABASE_URL is set) ─────────
+# sqlalchemy>=2.0.36               # ORM for optional prediction logging
+# aiosqlite>=0.20.0                # SQLite async driver (local dev)
+# asyncpg>=0.30.0                  # PostgreSQL async driver (production DB)
+# alembic>=1.13.3                  # database migrations
+
+# ── Optional (distributed rate limiting — only needed if REDIS_URL is set) ────
+# redis>=5.0.0                     # Redis client for slowapi storage backend
 
 # ── Development & Testing ─────────────────────────────────────────────────────
 # Install with:  pip install -r requirements-dev.txt

@@ -7,21 +7,23 @@
 #   2. runtime  – minimal Python image, copy only artefacts from builder
 #
 # Build:
-#   docker build -t solar-ai-backend:latest .
+#   docker build -t heliovision-backend:latest .
 #
 # Run:
-#   docker run -p 8000:8000 --env-file .env solar-ai-backend:latest
+#   docker run -p 8000:8000 --env-file .env heliovision-backend:latest
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: dependency builder ───────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
-# System packages needed to compile Python extensions (asyncpg, Pillow)
+# System packages needed to compile Python extensions (Pillow, opencv)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
-        libpq-dev \
+        g++ \
         libffi-dev \
         libssl-dev \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -38,13 +40,14 @@ FROM python:3.11-slim AS runtime
 
 LABEL maintainer="HelioVision Platform Team <support@heliovision.dev>"
 LABEL org.opencontainers.image.title="HelioVision Backend"
-LABEL org.opencontainers.image.description="Production FastAPI backend for solar energy AI"
+LABEL org.opencontainers.image.description="FastAPI backend for HelioVision Solar AI"
 LABEL org.opencontainers.image.version="1.0.0"
 
-# Runtime system libraries only (no compilers)
+# Runtime system libraries (no compilers, no postgres client)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libpq5 \
         curl \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user for security
@@ -57,8 +60,13 @@ COPY --from=builder /install /usr/local
 
 # Copy application source
 COPY --chown=solarai:solarai app/ ./app/
-COPY --chown=solarai:solarai alembic/ ./alembic/
-COPY --chown=solarai:solarai alembic.ini .
+
+# Copy ML model files (bundled in image — ~82 MB)
+# Prerequisite: run this from project root before docker build:
+#   mkdir backend/models
+#   copy trained-models/*.pkl backend/models/
+#   copy trained-models/*.pt  backend/models/
+COPY --chown=solarai:solarai models/ ./models/
 
 # Create directories owned by the app user
 RUN mkdir -p uploads logs && chown -R solarai:solarai uploads logs
@@ -70,15 +78,15 @@ USER solarai
 EXPOSE 8000
 
 # Health check — uses the liveness endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# start-period=120s gives YOLO enough time to load before health checks begin
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Default: production mode, 4 workers
-# Override with docker run -e WORKERS=1 for single-worker
+# Default environment
 ENV ENVIRONMENT=production \
     LOG_FORMAT=json \
     LOG_LEVEL=INFO \
-    WORKERS=4
+    WORKERS=2
 
 CMD uvicorn app.main:app \
         --host 0.0.0.0 \

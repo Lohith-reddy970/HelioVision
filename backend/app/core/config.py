@@ -48,15 +48,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_ML: str = "30/minute"
     RATE_LIMIT_UPLOAD: str = "10/minute"
 
-    # ── Redis (optional — for distributed rate limiting & caching) ─────────────
-    REDIS_URL: str = "redis://localhost:6379/0"  # used by slowapi in production
+    # ── Redis (not used — in-memory rate limiting is active) ────────────────────
+    # Set REDIS_URL in .env to enable Redis-backed distributed rate limiting.
+    REDIS_URL: str = ""  # leave empty to use in-memory (default, no Redis needed)
 
-    # ── Database ───────────────────────────────────────────────────────────────
-    DATABASE_URL: str = (
-        "postgresql+asyncpg://solar_user:solar_pass@localhost:5432/solar_db"
-    )
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
+    # ── Database (fully optional) ─────────────────────────────────────────────
+    # Leave DATABASE_URL empty (default) to run in stateless / no-DB mode.
+    # Core AI functionality (roof detection, solar forecast, savings) does NOT
+    # require a database. Set DATABASE_URL only if you want analytics logging.
+    DATABASE_URL: str = ""  # e.g. sqlite+aiosqlite:///solar_db.sqlite
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
     DATABASE_ECHO: bool = False  # set True to log SQL queries (dev only)
 
     # ── File upload ────────────────────────────────────────────────────────────

@@ -123,6 +123,9 @@ export async function analyzeRoof(file: File) {
       segments: any[];
       image_width_px: number;
       image_height_px: number;
+      raw_roof_area_m2?: number;
+      calibration_factor?: number;
+      engineering_validation_applied?: boolean;
     }>
   >(res);
 
@@ -155,6 +158,9 @@ export async function analyzeRoof(file: File) {
     segments: raw.data.segments,
     image_width_px: raw.data.image_width_px,
     image_height_px: raw.data.image_height_px,
+    raw_roof_area_m2: raw.data.raw_roof_area_m2,
+    calibration_factor: raw.data.calibration_factor,
+    engineering_validation_applied: raw.data.engineering_validation_applied,
   };
 
   return {

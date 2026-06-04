@@ -1,16 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# HelioVision – Docker Compose (Full Stack)
+# HelioVision – Minimal Docker Compose
 # ─────────────────────────────────────────────────────────────────────────────
-# Services:
-#   api       – FastAPI backend (4 workers)
-#   postgres  – PostgreSQL 16 (primary DB)
-#   redis     – Redis 7 (rate limit store, cache, future task queue)
-#   nginx     – Reverse proxy with SSL termination
+# Single-service deployment: just the FastAPI backend.
+# No PostgreSQL. No Redis. No Nginx.
 #
 # Usage:
-#   docker compose up -d           # start all services
-#   docker compose logs -f api     # tail API logs
-#   docker compose down -v         # stop + remove volumes
+#   docker compose up -d              # start
+#   docker compose logs -f            # tail logs
+#   docker compose down               # stop
+#
+# The full stack (with postgres + redis + nginx) is in docker-compose.full.yml
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -21,8 +20,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    image: solar-ai-backend:latest
-    container_name: solar_api
+    image: heliovision-backend:latest
+    container_name: heliovision_api
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -30,101 +29,28 @@ services:
       - ENVIRONMENT=production
       - LOG_FORMAT=json
       - LOG_LEVEL=INFO
-      - WORKERS=4
-      - DATABASE_URL=postgresql+asyncpg://solar_user:solar_pass@postgres:5432/solar_db
-      - REDIS_URL=redis://redis:6379/0
+      - WORKERS=2
+      # No DATABASE_URL — running in stateless mode
+      # No REDIS_URL — using in-memory rate limiting
       - SECRET_KEY=${SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}
       - ALLOWED_ORIGINS_STR=${ALLOWED_ORIGINS_STR:-http://localhost:3000}
-      - SOLAR_FORECAST_MODEL_PATH=/models/solar_forecast_rf.pkl
-      - SAVINGS_MODEL_PATH=/models/savings_model.pkl
-      - YOLO_MODEL_PATH=/models/roof_detection_yolov8.pt
+      - SOLAR_FORECAST_MODEL_PATH=/models/solar_forecast_model.pkl
+      - SAVINGS_MODEL_PATH=/models/savings_prediction_model.pkl
+      - YOLO_MODEL_PATH=/models/prediction_yolo1.pt
     volumes:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
       - ../trained-models:/models:ro   # mount trained model files read-only
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    networks:
-      - solar_net
-
-  # ── PostgreSQL ───────────────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    container_name: solar_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: solar_user
-      POSTGRES_PASSWORD: solar_pass
-      POSTGRES_DB: solar_db
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"      # expose for local tools (DBeaver, psql)
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U solar_user -d solar_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - solar_net
-
-  # ── Redis ────────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: solar_redis
-    restart: unless-stopped
-    command: >
-      redis-server
-        --maxmemory 256mb
-        --maxmemory-policy allkeys-lru
-        --save ""
-        --appendonly no
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - solar_net
-
-  # ── Nginx Reverse Proxy ──────────────────────────────────────────────────────
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: solar_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro       # mount SSL certs here
-    depends_on:
-      - api
-    networks:
-      - solar_net
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
-  postgres_data:
-    driver: local
   uploads_data:
     driver: local
   logs_data:
     driver: local
-
-# ── Networks ──────────────────────────────────────────────────────────────────
-networks:
-  solar_net:
-    driver: bridge
