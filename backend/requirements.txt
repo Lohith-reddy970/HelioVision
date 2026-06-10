@@ -44,3 +44,6 @@ psutil>=6.0.0                      # memory health check
 
 # ── Development & Testing ─────────────────────────────────────────────────────
 # Install with:  pip install -r requirements-dev.txt
+
+# ── Authentication ────────────────────────────────────────────────────────────
+firebase-admin>=6.5.0

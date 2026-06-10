@@ -9,6 +9,8 @@
  * - Some endpoints (e.g. /health) return a bare object (no envelope).
  */
 
+import { auth } from "./firebase";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -16,10 +18,45 @@ const API_BASE_URL =
 // Keep the header anyway so the code works seamlessly in production.
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "dev-insecure-key-do-not-use-in-production";
 
-const jsonHeaders: HeadersInit = {
-  "X-API-Key": API_KEY,
-  "Content-Type": "application/json",
-};
+function getCurrentUserToken(): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (auth.currentUser) {
+      auth.currentUser.getIdToken().then(resolve).catch(() => resolve(null));
+      return;
+    }
+    
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe();
+      if (user) {
+        user.getIdToken().then(resolve).catch(() => resolve(null));
+      } else {
+        resolve(null);
+      }
+    });
+    
+    setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, 2000);
+  });
+}
+
+async function getHeaders(isJson: boolean = false): Promise<HeadersInit> {
+  const headers: Record<string, string> = {
+    "X-API-Key": API_KEY,
+  };
+  if (isJson) {
+    headers["Content-Type"] = "application/json";
+  }
+  
+  if (typeof window !== "undefined") {
+    const token = await getCurrentUserToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -94,10 +131,11 @@ export async function analyzeRoof(file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
+  const headers = await getHeaders(false);
   const res = await fetch(`${API_BASE_URL}/roof/analyze`, {
     method: "POST",
     // Do NOT set Content-Type — browser sets multipart boundary automatically
-    headers: { "X-API-Key": API_KEY },
+    headers,
     body: formData,
   });
 
@@ -174,9 +212,10 @@ export async function analyzeRoof(file: File) {
  * GET /api/v1/roof/supported-formats
  */
 export async function getSupportedImageFormats() {
+  const headers = await getHeaders(false);
   const res = await fetch(`${API_BASE_URL}/roof/supported-formats`, {
     method: "GET",
-    headers: { "X-API-Key": API_KEY },
+    headers,
   });
   return handleResponse<SuccessEnvelope<Record<string, unknown>>>(res);
 }
@@ -214,9 +253,10 @@ export interface SolarForecastResult {
  * Predict hourly solar energy output using the Random Forest model.
  */
 export async function getSolarForecast(payload: SolarForecastPayload) {
+  const headers = await getHeaders(true);
   const res = await fetch(`${API_BASE_URL}/solar/forecast`, {
     method: "POST",
-    headers: jsonHeaders,
+    headers,
     body: JSON.stringify(payload),
   });
   return handleResponse<SuccessEnvelope<SolarForecastResult>>(res);
@@ -227,9 +267,10 @@ export async function getSolarForecast(payload: SolarForecastPayload) {
  * Returns metadata about the loaded forecast model.
  */
 export async function getSolarForecastInfo() {
+  const headers = await getHeaders(true);
   const res = await fetch(`${API_BASE_URL}/solar/forecast/info`, {
     method: "GET",
-    headers: jsonHeaders,
+    headers,
   });
   return handleResponse<SuccessEnvelope<Record<string, unknown>>>(res);
 }
@@ -272,9 +313,10 @@ export interface SavingsPredictionResult {
  * Full ML-powered financial savings prediction.
  */
 export async function getSavingsPrediction(payload: SavingsPredictionPayload) {
+  const headers = await getHeaders(true);
   const res = await fetch(`${API_BASE_URL}/savings/predict`, {
     method: "POST",
-    headers: jsonHeaders,
+    headers,
     body: JSON.stringify(payload),
   });
   return handleResponse<SuccessEnvelope<SavingsPredictionResult>>(res);
@@ -294,9 +336,10 @@ export async function getQuickSavingsEstimate(params: {
     Object.entries(params).map(([k, v]) => [k, String(v)])
   ).toString();
 
+  const headers = await getHeaders(true);
   const res = await fetch(`${API_BASE_URL}/savings/quick?${query}`, {
     method: "GET",
-    headers: jsonHeaders,
+    headers,
   });
   return handleResponse<SuccessEnvelope<Record<string, unknown>>>(res);
 }
