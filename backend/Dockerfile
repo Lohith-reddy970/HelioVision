@@ -74,24 +74,15 @@ RUN mkdir -p uploads logs && chown -R solarai:solarai uploads logs
 # Switch to non-root user
 USER solarai
 
-# Expose API port
-EXPOSE 8000
-
-# Health check — uses the liveness endpoint
-# start-period=120s gives YOLO enough time to load before health checks begin
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
-
-# Default environment
-ENV ENVIRONMENT=production \
+# Railway dynamically assigns PORT — expose that value (default 8000 for local)
+ENV PORT=8000 \
+    ENVIRONMENT=production \
     LOG_FORMAT=json \
     LOG_LEVEL=INFO \
     WORKERS=2
 
-CMD uvicorn app.main:app \
-        --host 0.0.0.0 \
-        --port 8000 \
-        --workers ${WORKERS} \
-        --access-log \
-        --log-level warning \
-        --no-use-colors
+EXPOSE ${PORT}
+
+# Use JSON array form to properly handle OS signals
+# Railway provides its own network healthcheck — no Docker HEALTHCHECK needed
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS} --access-log --log-level warning --no-use-colors"]
