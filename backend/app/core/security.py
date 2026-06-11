@@ -67,7 +67,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(f
     """
     Dependency to verify Firebase ID tokens.
     Returns the decoded token dictionary if valid.
+
+    Skip validation in development mode to ease local testing.
     """
+    if settings.ENVIRONMENT == "development":
+        return {"uid": "dev-user", "email": "dev@localhost"}
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

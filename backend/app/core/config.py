@@ -40,7 +40,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000,"
         "http://127.0.0.1:5500,"
         "https://solar-ai-platform.vercel.app,"
-        "https://heliovision.vercel.app"
+        "https://heliovision.vercel.app,"
+        "https://helio-vision.vercel.app"
     )
 
     @property
