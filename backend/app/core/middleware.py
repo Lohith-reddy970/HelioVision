@@ -86,6 +86,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     _DOCS_PATHS: frozenset[str] = frozenset({"/docs", "/redoc", "/openapi.json"})
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Let OPTIONS preflight pass through without adding security headers
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         response = await call_next(request)
 
         # Choose the appropriate CSP: relaxed for docs UI, tight for everything else
@@ -121,6 +125,10 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
         self.timeout = timeout_seconds
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Let OPTIONS preflight pass through without timeout enforcement
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         try:
             return await asyncio.wait_for(call_next(request), timeout=self.timeout)
         except asyncio.TimeoutError:
@@ -174,7 +182,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return request.client.host if request.client else "unknown"
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in self._SKIP_PATHS:
+        # Let OPTIONS preflight pass through without logging overhead
+        if request.method == "OPTIONS" or request.url.path in self._SKIP_PATHS:
             return await call_next(request)
 
         start_time = time.perf_counter()

@@ -32,12 +32,28 @@ class Settings(BaseSettings):
     REQUEST_TIMEOUT_SECONDS: float = 60.0  # HTTP 504 after this many seconds
 
     # ── CORS ───────────────────────────────────────────────────────────────────
-    ALLOWED_ORIGINS_STR: str = "http://localhost:3000,http://localhost:8080"
+    # Include all known frontend origins. Override via ALLOWED_ORIGINS_STR env
+    # variable on Railway / production. Use "*" to allow all origins (dev only).
+    ALLOWED_ORIGINS_STR: str = (
+        "http://localhost:3000,"
+        "http://localhost:8080,"
+        "http://127.0.0.1:3000,"
+        "http://127.0.0.1:5500,"
+        "https://solar-ai-platform.vercel.app,"
+        "https://heliovision.vercel.app"
+    )
 
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
-        """Parse the comma-separated origins string into a list."""
-        return [o.strip() for o in self.ALLOWED_ORIGINS_STR.split(",") if o.strip()]
+        """Parse the comma-separated origins string into a list.
+
+        Special case: if the string is exactly '*', return ['*'] to allow
+        all origins (useful for initial deployment debugging).
+        """
+        raw = self.ALLOWED_ORIGINS_STR.strip()
+        if raw == "*":
+            return ["*"]
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     # ── Trusted hosts (production) ─────────────────────────────────────────────
     # Comma-separated: ALLOWED_HOSTS_STR=api.solarai.dev,*.solarai.dev

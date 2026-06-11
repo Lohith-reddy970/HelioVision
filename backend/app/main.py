@@ -100,45 +100,56 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # ── Middleware stack (registration order = outermost last) ─────────────────
-    # 1. GZip — compress large JSON responses
-    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # ── Middleware stack ────────────────────────────────────────────────────────
+    # IMPORTANT: In Starlette/FastAPI the middleware registered LAST runs FIRST
+    # on incoming requests (outermost). We register CORSMiddleware LAST so it
+    # intercepts OPTIONS preflight requests before any other middleware can
+    # reject them (e.g. rate-limiter, auth, security headers).
+    #
+    # Execution order for an incoming request:
+    #   CORS → GZip → TrustedHost → RateLimiter → SecurityHeaders →
+    #   Timeout → CorrelationID → RequestLogging → route handler
 
-    # 2. Trusted hosts (prevent Host header injection)
+    # 1. Request logging (innermost — sees final path + status)
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # 2. Correlation ID / Request ID tracing
+    app.add_middleware(CorrelationIDMiddleware)
+
+    # 3. Request timeout (60 s default; override per-request for heavy ML)
+    app.add_middleware(
+        RequestTimeoutMiddleware,
+        timeout_seconds=settings.REQUEST_TIMEOUT_SECONDS,
+    )
+
+    # 4. Security headers
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # 5. Rate limiting
+    app.add_middleware(SlowAPIMiddleware)
+
+    # 6. Trusted hosts (prevent Host header injection)
     if settings.ENVIRONMENT == "production":
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=settings.ALLOWED_HOSTS_STR.split(","),
         )
 
-    # 3. CORS
+    # 7. GZip — compress large JSON responses
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    # 8. CORS — registered LAST so it runs FIRST on incoming requests.
+    #    This ensures OPTIONS preflight requests are handled immediately
+    #    and never reach the rate limiter or auth middleware.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["X-Correlation-ID", "X-Request-ID", "X-Response-Time-Ms",
                         "X-RateLimit-Limit", "X-RateLimit-Remaining"],
     )
-
-    # 4. Rate limiting (must come after CORS so OPTIONS passes through)
-    app.add_middleware(SlowAPIMiddleware)
-
-    # 5. Security headers
-    app.add_middleware(SecurityHeadersMiddleware)
-
-    # 6. Request timeout (60 s default; override per-request for heavy ML)
-    app.add_middleware(
-        RequestTimeoutMiddleware,
-        timeout_seconds=settings.REQUEST_TIMEOUT_SECONDS,
-    )
-
-    # 7. Correlation ID / Request ID tracing
-    app.add_middleware(CorrelationIDMiddleware)
-
-    # 8. Structured request logging (innermost — sees final path + status)
-    app.add_middleware(RequestLoggingMiddleware)
 
     # ── Exception handlers ─────────────────────────────────────────────────────
     register_exception_handlers(app)

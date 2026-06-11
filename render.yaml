@@ -36,10 +36,10 @@ services:
       - key: REQUEST_TIMEOUT_SECONDS
         value: "90"
 
-      # CORS — UPDATE THIS after Vercel deployment gives you your real URL
-      # e.g. https://heliovision-abc123.vercel.app
+      # CORS — include your Vercel frontend domain(s) and localhost for dev
+      # To allow ALL origins temporarily for debugging, set to: *
       - key: ALLOWED_ORIGINS_STR
-        value: https://your-app.vercel.app
+        value: http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,https://solar-ai-platform.vercel.app,https://heliovision.vercel.app
 
       # API key — set a strong secret in Render dashboard (mark as secret)
       - key: SECRET_KEY
