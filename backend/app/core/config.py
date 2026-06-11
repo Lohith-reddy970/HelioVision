@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = False  # set True to log SQL queries (dev only)
 
     # ── File upload ────────────────────────────────────────────────────────────
-    UPLOAD_DIR: Path = Path("uploads")
+    UPLOAD_DIR: Path = Path("/tmp/heliovision-uploads") if Path("/tmp").exists() else Path("uploads")
     MAX_UPLOAD_SIZE_MB: int = 10  # megabytes
     # Comma-separated in .env: ALLOWED_IMAGE_TYPES_STR=image/jpeg,image/png
     ALLOWED_IMAGE_TYPES_STR: str = "image/jpeg,image/png,image/webp"
